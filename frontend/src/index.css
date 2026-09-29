@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap');
+
+:root {
+  font-family: 'Outfit', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #30506e;
+  background:
+    radial-gradient(circle at top left, #f4fbff 0%, transparent 30%),
+    radial-gradient(circle at bottom right, #ebf8f3 0%, transparent 26%),
+    linear-gradient(180deg, #f5f9fc 0%, #eef4f7 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --title-text: #10263e;
+  --body-text: #486680;
+  --muted-text: #6d879d;
+  --panel-bg: rgba(248, 252, 255, 0.78);
+  --panel-border: rgba(20, 43, 78, 0.08);
+  --panel-shadow: 0 24px 70px rgba(40, 87, 132, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+body,
+button,
+input {
+  font-family: 'Outfit', sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.04em;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
+
+img {
+  max-width: 100%;
+}

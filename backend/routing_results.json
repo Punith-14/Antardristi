@@ -1,0 +1,36 @@
+{
+  "benchmark": "India EO Query Benchmark v1",
+  "mode": "openai/gpt-oss-20b",
+  "run_at": "2026-09-20T15:22:49",
+  "cases_scored": 45,
+  "accuracy": {
+    "analysis": 1.0,
+    "region": 1.0,
+    "comparison": 1.0,
+    "period": 1.0,
+    "refusal": 1.0
+  },
+  "exact_match": 1.0,
+  "fallbacks": 0,
+  "by_category": {
+    "plain": 1.0,
+    "explicit month": 1.0,
+    "season": 1.0,
+    "indirect phrasing": 1.0,
+    "indian season": 1.0,
+    "district": 1.0,
+    "technical term": 1.0,
+    "informal region name": 1.0,
+    "named feature resolved to its state": 1.0,
+    "implicit comparison": 1.0,
+    "comparison": 1.0,
+    "colloquial city name": 1.0,
+    "district spelling variant": 1.0,
+    "vague sub-region": 1.0,
+    "terse": 1.0,
+    "out of scope": 1.0,
+    "unmeasurable by satellite": 1.0,
+    "district created after 2015": 1.0
+  },
+  "failures": []
+}

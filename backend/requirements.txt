@@ -1,0 +1,21 @@
+earthengine-api
+fastapi
+uvicorn[standard]
+python-dotenv
+python-multipart
+pydantic
+requests
+numpy
+opencv-python-headless
+pillow
+groq
+
+# Land cover classifier. The version is PINNED because scikit-learn pickles are
+# not portable across versions - a mismatch can load and then behave
+# differently, which is worse than failing. models/landcover_rf_v1.json records
+# the version it was trained with, and a test asserts the two agree.
+scikit-learn==1.9.1
+
+# Testing
+pytest
+requests

@@ -1,0 +1,48 @@
+{
+  "created": "2026-09-21T04:18:40+00:00",
+  "source": "COPERNICUS/S2_SR_HARMONIZED",
+  "labels": "ESA/WorldCover/v200",
+  "window": [
+    "2021-01-01",
+    "2021-03-31"
+  ],
+  "scale_m": 20,
+  "per_class_per_district": 300,
+  "districts": [
+    "Punjab",
+    "Kerala",
+    "Bangalore Urban",
+    "Jaisalmer",
+    "Thrissur",
+    "Ludhiana",
+    "Mumbai",
+    "Ahmadabad",
+    "Dehra Dun",
+    "Cuttack"
+  ],
+  "features": [
+    "B2",
+    "B3",
+    "B4",
+    "B8",
+    "B11",
+    "B12",
+    "ndvi",
+    "ndwi",
+    "mndwi",
+    "ndbi",
+    "ndmi",
+    "bsi",
+    "VV",
+    "VH",
+    "vv_vh_ratio"
+  ],
+  "classes": {
+    "1": "water",
+    "2": "vegetation",
+    "3": "built-up",
+    "4": "bare"
+  },
+  "samples": 10800,
+  "note": "Features match backend/indices.py exactly, so a model trained here is directly comparable with the index thresholds it replaces."
+}

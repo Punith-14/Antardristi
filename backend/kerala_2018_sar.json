@@ -1,0 +1,1091 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-24T10:40:58.926036Z",
+  "region": {
+    "slug": "kerala",
+    "name": "Kerala",
+    "admin_level": "state",
+    "state": "Kerala",
+    "boundary_source": "FAO/GAUL/2015/level1",
+    "boundary_vintage": "2015"
+  },
+  "period": {
+    "mode": "comparison",
+    "post": {
+      "start": "2018-08-15",
+      "end": "2018-08-25"
+    },
+    "pre": {
+      "start": "2018-02-01",
+      "end": "2018-04-30"
+    }
+  },
+  "observation": {
+    "sensor_used": "sentinel-1",
+    "observable_area_km2": 34674.5,
+    "scenes_available": 4,
+    "scenes_used": 4,
+    "sensor_reason": "forced_by_request:sentinel-1",
+    "sensors_considered": [
+      "sentinel-2",
+      "sentinel-1"
+    ],
+    "coverage_fraction": 0.9124,
+    "scenes_rejected_by_cloud_filter": 0
+  },
+  "unobserved": {
+    "reason": null,
+    "masked_area_km2": 3327.0,
+    "region_area_km2": 38001.5,
+    "notes": [
+      "This detection method scores IoU 0.441, precision 0.763 and recall 0.511 on Sen1Floods11 HandLabeled (446 chips, VV). Roughly a quarter of detected pixels are expected to be false positives, and around half of true flooding is expected to be missed."
+    ]
+  },
+  "evidence": [
+    {
+      "id": "E1",
+      "quantity": "flood_extent",
+      "value": 486.4,
+      "unit": "km2",
+      "method": "Sentinel-1 VV at -17.0 dB (fixed_validated), permanent water excluded",
+      "threshold": -17.0,
+      "threshold_unit": "dB",
+      "confidence": 0.763,
+      "spatial_support_km2": 34674.5,
+      "source": "COPERNICUS/S1_GRD IW VV"
+    },
+    {
+      "id": "E2",
+      "quantity": "flood_extent_fraction",
+      "value": 1.4,
+      "unit": "percent",
+      "denominator": "observable_area_km2",
+      "derived_from": [
+        "E1"
+      ],
+      "note": "Percentage is of observable area, not total region area."
+    },
+    {
+      "id": "E3",
+      "quantity": "permanent_water_area",
+      "value": 273.5,
+      "unit": "km2",
+      "method": "JRC/GSW1_4/GlobalSurfaceWater occurrence >= 90, excluded from flood extent",
+      "source": "JRC/GSW1_4/GlobalSurfaceWater"
+    },
+    {
+      "id": "E4",
+      "quantity": "zone_count",
+      "value": 154,
+      "unit": "zones",
+      "method": "Connected flooded regions vectorised at 200 m; regions below 0.5 km2 excluded as noise",
+      "derived_from": [
+        "E1"
+      ],
+      "note": "25 largest are listed individually"
+    },
+    {
+      "id": "E5",
+      "quantity": "largest_zone_area",
+      "value": 28.97,
+      "unit": "km2",
+      "derived_from": [
+        "E4"
+      ],
+      "note": "Centred near 9.52 N, 76.46 E"
+    },
+    {
+      "id": "E6",
+      "quantity": "zoned_fraction",
+      "value": 65.6,
+      "unit": "percent",
+      "derived_from": [
+        "E1",
+        "E4"
+      ],
+      "note": "Remainder is scattered pixels below the minimum zone size, which may indicate dispersed wet ground rather than contiguous flooding."
+    },
+    {
+      "id": "E7",
+      "quantity": "baseline_water_extent",
+      "value": 8.5,
+      "unit": "km2",
+      "method": "Sentinel-1 VV at the same -17.0 dB threshold and relative orbit as the post-event window",
+      "period_ref": "pre"
+    },
+    {
+      "id": "E8",
+      "quantity": "net_new_water",
+      "value": 477.9,
+      "unit": "km2",
+      "method": "post minus pre water extent",
+      "derived_from": [
+        "E1",
+        "E7"
+      ]
+    }
+  ],
+  "zones": [
+    {
+      "id": "Z1",
+      "rank": 1,
+      "area_km2": 28.97,
+      "centroid": [
+        76.4567,
+        9.5183
+      ],
+      "bbox": [
+        76.4223,
+        9.4759,
+        76.4924,
+        9.5657
+      ],
+      "severity": "moderate"
+    },
+    {
+      "id": "Z2",
+      "rank": 2,
+      "area_km2": 16.32,
+      "centroid": [
+        76.1257,
+        10.5182
+      ],
+      "bbox": [
+        76.1025,
+        10.482,
+        76.1528,
+        10.5628
+      ],
+      "severity": "moderate"
+    },
+    {
+      "id": "Z3",
+      "rank": 3,
+      "area_km2": 14.88,
+      "centroid": [
+        76.3999,
+        9.5258
+      ],
+      "bbox": [
+        76.3828,
+        9.4867,
+        76.4241,
+        9.5621
+      ],
+      "severity": "moderate"
+    },
+    {
+      "id": "Z4",
+      "rank": 4,
+      "area_km2": 14.06,
+      "centroid": [
+        76.494,
+        9.3057
+      ],
+      "bbox": [
+        76.4618,
+        9.28,
+        76.5265,
+        9.3268
+      ],
+      "severity": "moderate"
+    },
+    {
+      "id": "Z5",
+      "rank": 5,
+      "area_km2": 9.41,
+      "centroid": [
+        76.3666,
+        9.4381
+      ],
+      "bbox": [
+        76.354,
+        9.404,
+        76.3792,
+        9.4669
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z6",
+      "rank": 6,
+      "area_km2": 9.09,
+      "centroid": [
+        76.4479,
+        9.7039
+      ],
+      "bbox": [
+        76.4295,
+        9.6807,
+        76.4708,
+        9.731
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z7",
+      "rank": 7,
+      "area_km2": 8.54,
+      "centroid": [
+        76.4975,
+        9.445
+      ],
+      "bbox": [
+        76.4726,
+        9.4238,
+        76.5247,
+        9.4615
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z8",
+      "rank": 8,
+      "area_km2": 7.79,
+      "centroid": [
+        76.4584,
+        9.6626
+      ],
+      "bbox": [
+        76.4331,
+        9.6448,
+        76.487,
+        9.6825
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z9",
+      "rank": 9,
+      "area_km2": 6.1,
+      "centroid": [
+        76.4384,
+        9.4141
+      ],
+      "bbox": [
+        76.4205,
+        9.3968,
+        76.4564,
+        9.4292
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z10",
+      "rank": 10,
+      "area_km2": 5.47,
+      "centroid": [
+        76.4208,
+        9.4681
+      ],
+      "bbox": [
+        76.4097,
+        9.4525,
+        76.4367,
+        9.4813
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z11",
+      "rank": 11,
+      "area_km2": 5.38,
+      "centroid": [
+        76.7885,
+        10.2488
+      ],
+      "bbox": [
+        76.7313,
+        10.2412,
+        76.8301,
+        10.2574
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z12",
+      "rank": 12,
+      "area_km2": 5.23,
+      "centroid": [
+        76.4523,
+        9.7621
+      ],
+      "bbox": [
+        76.4349,
+        9.7472,
+        76.4708,
+        9.7759
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z13",
+      "rank": 13,
+      "area_km2": 5.0,
+      "centroid": [
+        76.4461,
+        9.5559
+      ],
+      "bbox": [
+        76.4259,
+        9.5442,
+        76.4654,
+        9.5711
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z14",
+      "rank": 14,
+      "area_km2": 4.55,
+      "centroid": [
+        76.1413,
+        10.4602
+      ],
+      "bbox": [
+        76.1294,
+        10.4443,
+        76.1546,
+        10.4766
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z15",
+      "rank": 15,
+      "area_km2": 4.41,
+      "centroid": [
+        76.4479,
+        9.5383
+      ],
+      "bbox": [
+        76.4367,
+        9.5298,
+        76.4636,
+        9.5495
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z16",
+      "rank": 16,
+      "area_km2": 3.93,
+      "centroid": [
+        76.1782,
+        10.437
+      ],
+      "bbox": [
+        76.1672,
+        10.4245,
+        76.1923,
+        10.4497
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z17",
+      "rank": 17,
+      "area_km2": 3.92,
+      "centroid": [
+        76.1824,
+        10.481
+      ],
+      "bbox": [
+        76.1636,
+        10.4676,
+        76.2067,
+        10.4946
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z18",
+      "rank": 18,
+      "area_km2": 3.78,
+      "centroid": [
+        76.3976,
+        9.3635
+      ],
+      "bbox": [
+        76.3828,
+        9.3501,
+        76.4151,
+        9.3771
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z19",
+      "rank": 19,
+      "area_km2": 3.65,
+      "centroid": [
+        76.1593,
+        10.5367
+      ],
+      "bbox": [
+        76.1384,
+        10.5305,
+        76.1779,
+        10.5431
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z20",
+      "rank": 20,
+      "area_km2": 3.5,
+      "centroid": [
+        76.4156,
+        9.4993
+      ],
+      "bbox": [
+        76.4079,
+        9.4831,
+        76.4223,
+        9.5118
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z21",
+      "rank": 21,
+      "area_km2": 3.49,
+      "centroid": [
+        76.4807,
+        10.4395
+      ],
+      "bbox": [
+        76.4618,
+        10.4263,
+        76.4995,
+        10.4586
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z22",
+      "rank": 22,
+      "area_km2": 3.48,
+      "centroid": [
+        75.9469,
+        11.6538
+      ],
+      "bbox": [
+        75.93,
+        11.6372,
+        75.9606,
+        11.6714
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z23",
+      "rank": 23,
+      "area_km2": 3.34,
+      "centroid": [
+        76.4631,
+        9.7308
+      ],
+      "bbox": [
+        76.451,
+        9.7184,
+        76.4744,
+        9.749
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z24",
+      "rank": 24,
+      "area_km2": 3.19,
+      "centroid": [
+        76.6493,
+        9.2101
+      ],
+      "bbox": [
+        76.6343,
+        9.1938,
+        76.6684,
+        9.2297
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "Z25",
+      "rank": 25,
+      "area_km2": 3.15,
+      "centroid": [
+        76.4889,
+        9.4057
+      ],
+      "bbox": [
+        76.478,
+        9.3878,
+        76.4995,
+        9.4184
+      ],
+      "severity": "low"
+    }
+  ],
+  "zones_summary": {
+    "count": 154,
+    "listed": 25,
+    "truncated": true,
+    "largest_area_km2": 28.97,
+    "total_area_km2": 318.97,
+    "listed_area_km2": 180.63,
+    "high_severity_count": 0
+  },
+  "zones_geojson": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4567,
+            9.5183
+          ]
+        },
+        "properties": {
+          "id": "Z1",
+          "rank": 1,
+          "area_km2": 28.97,
+          "severity": "moderate"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.1257,
+            10.5182
+          ]
+        },
+        "properties": {
+          "id": "Z2",
+          "rank": 2,
+          "area_km2": 16.32,
+          "severity": "moderate"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.3999,
+            9.5258
+          ]
+        },
+        "properties": {
+          "id": "Z3",
+          "rank": 3,
+          "area_km2": 14.88,
+          "severity": "moderate"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.494,
+            9.3057
+          ]
+        },
+        "properties": {
+          "id": "Z4",
+          "rank": 4,
+          "area_km2": 14.06,
+          "severity": "moderate"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.3666,
+            9.4381
+          ]
+        },
+        "properties": {
+          "id": "Z5",
+          "rank": 5,
+          "area_km2": 9.41,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4479,
+            9.7039
+          ]
+        },
+        "properties": {
+          "id": "Z6",
+          "rank": 6,
+          "area_km2": 9.09,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4975,
+            9.445
+          ]
+        },
+        "properties": {
+          "id": "Z7",
+          "rank": 7,
+          "area_km2": 8.54,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4584,
+            9.6626
+          ]
+        },
+        "properties": {
+          "id": "Z8",
+          "rank": 8,
+          "area_km2": 7.79,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4384,
+            9.4141
+          ]
+        },
+        "properties": {
+          "id": "Z9",
+          "rank": 9,
+          "area_km2": 6.1,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4208,
+            9.4681
+          ]
+        },
+        "properties": {
+          "id": "Z10",
+          "rank": 10,
+          "area_km2": 5.47,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.7885,
+            10.2488
+          ]
+        },
+        "properties": {
+          "id": "Z11",
+          "rank": 11,
+          "area_km2": 5.38,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4523,
+            9.7621
+          ]
+        },
+        "properties": {
+          "id": "Z12",
+          "rank": 12,
+          "area_km2": 5.23,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4461,
+            9.5559
+          ]
+        },
+        "properties": {
+          "id": "Z13",
+          "rank": 13,
+          "area_km2": 5.0,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.1413,
+            10.4602
+          ]
+        },
+        "properties": {
+          "id": "Z14",
+          "rank": 14,
+          "area_km2": 4.55,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4479,
+            9.5383
+          ]
+        },
+        "properties": {
+          "id": "Z15",
+          "rank": 15,
+          "area_km2": 4.41,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.1782,
+            10.437
+          ]
+        },
+        "properties": {
+          "id": "Z16",
+          "rank": 16,
+          "area_km2": 3.93,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.1824,
+            10.481
+          ]
+        },
+        "properties": {
+          "id": "Z17",
+          "rank": 17,
+          "area_km2": 3.92,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.3976,
+            9.3635
+          ]
+        },
+        "properties": {
+          "id": "Z18",
+          "rank": 18,
+          "area_km2": 3.78,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.1593,
+            10.5367
+          ]
+        },
+        "properties": {
+          "id": "Z19",
+          "rank": 19,
+          "area_km2": 3.65,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4156,
+            9.4993
+          ]
+        },
+        "properties": {
+          "id": "Z20",
+          "rank": 20,
+          "area_km2": 3.5,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4807,
+            10.4395
+          ]
+        },
+        "properties": {
+          "id": "Z21",
+          "rank": 21,
+          "area_km2": 3.49,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            75.9469,
+            11.6538
+          ]
+        },
+        "properties": {
+          "id": "Z22",
+          "rank": 22,
+          "area_km2": 3.48,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4631,
+            9.7308
+          ]
+        },
+        "properties": {
+          "id": "Z23",
+          "rank": 23,
+          "area_km2": 3.34,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.6493,
+            9.2101
+          ]
+        },
+        "properties": {
+          "id": "Z24",
+          "rank": 24,
+          "area_km2": 3.19,
+          "severity": "low"
+        }
+      },
+      {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            76.4889,
+            9.4057
+          ]
+        },
+        "properties": {
+          "id": "Z25",
+          "rank": 25,
+          "area_km2": 3.15,
+          "severity": "low"
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "pipeline_version": "0.5.0",
+    "models": [],
+    "datasets": [
+      {
+        "id": "COPERNICUS/S1_GRD",
+        "role": "primary imagery"
+      },
+      {
+        "id": "JRC/GSW1_4/GlobalSurfaceWater",
+        "role": "permanent water mask"
+      },
+      {
+        "id": "FAO/GAUL/2015/level1",
+        "role": "administrative boundary"
+      }
+    ],
+    "stats_scale_m": 200,
+    "known_confusions": [
+      "Radar shadow behind terrain and tall buildings is dark and can read as water.",
+      "Smooth dry surfaces such as tarmac, sand flats and bare hardpan can read as water.",
+      "Flooded vegetation may NOT be detected: the canopy scatters the radar pulse back to the sensor, so water beneath trees or tall crops is frequently missed.",
+      "Wind roughens open water and raises backscatter, which can cause flooding to be underestimated during a storm.",
+      "Boundary vintage is 2015; districts created after that date are not resolvable."
+    ]
+  },
+  "report": {
+    "text": "The Sentinel\u20111 analysis shows flood\u2011affected water covering 486.4\u202fkm\u00b2 [E1], which is 1.4\u202fpercent of the observable area [E2]. Permanent water bodies account for 273.5\u202fkm\u00b2 [E3], while the baseline water extent before the event was 8.5\u202fkm\u00b2 [E7], giving a net new water increase of 477.9\u202fkm\u00b2 [E8]. The flood is broken into 154 zones [E4]; the largest zone is 28.97\u202fkm\u00b2 [E5] and overall 65.6\u202fpercent of the flooded area is organised into zones larger than 0.5\u202fkm\u00b2 [E6]. This detection method scores IoU\u202f0.441, precision\u202f0.763 and recall\u202f0.511 on Sen1Floods11 HandLabeled, meaning roughly a quarter of detected pixels may be false positives and about half of true flooding may be missed.",
+    "generator_model": "openai/gpt-oss-120b",
+    "fallback_used": false,
+    "fallback_reason": null,
+    "rejected_attempt": null
+  },
+  "verification": {
+    "faithfulness_rate": 1.0,
+    "claims_total": 12,
+    "claims_supported": 12,
+    "claims_unsupported": 0,
+    "unsupported_claims": [],
+    "supported_claims": [
+      {
+        "claim": "486.4",
+        "value": 486.4,
+        "position": 60,
+        "evidence_id": "E1",
+        "quantity": "flood_extent"
+      },
+      {
+        "claim": "1.4",
+        "value": 1.4,
+        "position": 85,
+        "evidence_id": "E2",
+        "quantity": "flood_extent_fraction"
+      },
+      {
+        "claim": "273.5",
+        "value": 273.5,
+        "position": 161,
+        "evidence_id": "E3",
+        "quantity": "permanent_water_area"
+      },
+      {
+        "claim": "8.5",
+        "value": 8.5,
+        "position": 230,
+        "evidence_id": "E7",
+        "quantity": "baseline_water_extent"
+      },
+      {
+        "claim": "477.9",
+        "value": 477.9,
+        "position": 279,
+        "evidence_id": "E8",
+        "quantity": "net_new_water"
+      },
+      {
+        "claim": "154",
+        "value": 154.0,
+        "position": 320,
+        "evidence_id": "E4",
+        "quantity": "zone_count"
+      },
+      {
+        "claim": "28.97",
+        "value": 28.97,
+        "position": 356,
+        "evidence_id": "E5",
+        "quantity": "largest_zone_area"
+      },
+      {
+        "claim": "65.6",
+        "value": 65.6,
+        "position": 383,
+        "evidence_id": "E6",
+        "quantity": "zoned_fraction"
+      },
+      {
+        "claim": "0.5",
+        "value": 0.5,
+        "position": 452,
+        "evidence_id": null,
+        "quantity": "note0_67"
+      },
+      {
+        "claim": "0.441",
+        "value": 0.441,
+        "position": 499,
+        "evidence_id": null,
+        "quantity": "note0_33"
+      },
+      {
+        "claim": "0.763",
+        "value": 0.763,
+        "position": 516,
+        "evidence_id": "E1",
+        "quantity": "confidence"
+      },
+      {
+        "claim": "0.511",
+        "value": 0.511,
+        "position": 533,
+        "evidence_id": null,
+        "quantity": "note0_67"
+      }
+    ],
+    "citations_found": [
+      "E1",
+      "E2",
+      "E3",
+      "E4",
+      "E5",
+      "E6",
+      "E7",
+      "E8"
+    ],
+    "invalid_citations": [],
+    "uncited_evidence": [],
+    "passed": true,
+    "checked_by": "deterministic_numeric_matcher_v1",
+    "caveats": {
+      "caveats_required": 1,
+      "caveats_mentioned": 1,
+      "completeness": 1.0,
+      "omitted_caveats": [],
+      "passed": true
+    }
+  }
+}

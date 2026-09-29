@@ -1,0 +1,86 @@
+{
+  "name": "India EO Query Benchmark v1",
+  "description": "Natural-language questions about Indian Earth observation, with the routing each one should produce. Existing agent benchmarks (GeoLLM-Engine, GeoAgentBench) are not India-specific and do not cover Indian cropping seasons, district naming, or monsoon phrasing.",
+  "created": "2026-09-20",
+  "revisions": [
+    {
+      "date": "2026-09-20",
+      "note": "Three labels corrected after the first model run. Vembanad lake is in Kerala, and Kutch and Gurgaon are real districts, so 'no region' was factually wrong in each case - the model was right and the benchmark was not. Corrected because the labels were incorrect, not because the model disagreed with them."
+    },
+    {
+      "date": "2026-09-20",
+      "note": "One further label corrected: 'How much has Bangalore grown since 2019' names Bangalore, which is a resolvable district, so expecting no region was wrong for the same reason as the three above. No label has been changed merely because the model disagreed with it - each correction is a factual error in the original labelling."
+    },
+    {
+      "date": "2026-09-20",
+      "note": "Added region_resolvable, splitting a field that was conflating two different jobs. The original schema scored extraction and resolution together, so a correct extraction of an unresolvable place ('marathwada') counted as a failure. That is a benchmark design error, not a system error: the router reads the question, the resolver owns the gazetteer. Marathwada, Vidarbha and Bundelkhand are now labelled as correctly extracted and correctly unresolvable. This is a schema change rather than another relabelling - the three cases still test that informal regions are handled, but they now test the right thing."
+    }
+  ],
+  "fields": {
+    "question": "what a user would type",
+    "analysis_type": "expected analysis, or null when the question is out of scope",
+    "region": "the place name that should be EXTRACTED from the question, lowercase, or null when no place is named",
+    "region_resolvable": "whether that name exists in FAO GAUL 2015 and will resolve to a geometry. Absent means true.",
+    "comparison": "true when the question asks for change rather than a snapshot",
+    "period_contains": "a date the chosen window must include, or null",
+    "category": "what this case is testing"
+  },
+  "scoring_note": "Extraction and resolution are separate jobs and are scored separately. The router's task is to report what the question said; deciding whether that place exists belongs to the region resolver, which has the gazetteer. Returning 'marathwada' for a question about Marathwada is CORRECT extraction, even though Marathwada is a cultural region spanning eight districts and will not resolve. Returning null there would assert that no place was named, which is false and produces a worse error message for the user.",
+  "cases": [
+    {"question": "Show flooded areas in Kerala", "analysis_type": "flood_extent", "region": "kerala", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "How much of Assam is flooded right now", "analysis_type": "flood_extent", "region": "assam", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "Flooding in Kendrapara in August 2018", "analysis_type": "flood_extent", "region": "kendrapara", "comparison": false, "period_contains": "2018-08-15", "category": "explicit month"},
+    {"question": "Was Bihar inundated during the 2019 monsoon", "analysis_type": "flood_extent", "region": "bihar", "comparison": false, "period_contains": "2019-07-15", "category": "season"},
+    {"question": "Which parts of Odisha were submerged after the July rains", "analysis_type": "flood_extent", "region": "odisha", "comparison": false, "period_contains": null, "category": "indirect phrasing"},
+
+    {"question": "Vegetation health in Punjab during kharif 2023", "analysis_type": "vegetation_health", "region": "punjab", "comparison": false, "period_contains": "2023-08-01", "category": "indian season"},
+    {"question": "How much cropland is there in Ludhiana", "analysis_type": "vegetation_health", "region": "ludhiana", "comparison": false, "period_contains": null, "category": "district"},
+    {"question": "Show me greenness across Haryana in rabi season", "analysis_type": "vegetation_health", "region": "haryana", "comparison": false, "period_contains": "2025-12-15", "category": "indian season"},
+    {"question": "NDVI for Maharashtra in March 2023", "analysis_type": "vegetation_health", "region": "maharashtra", "comparison": false, "period_contains": "2023-03-15", "category": "technical term"},
+    {"question": "Crop cover in Nashik after sowing", "analysis_type": "vegetation_health", "region": "nashik", "comparison": false, "period_contains": null, "category": "indirect phrasing"},
+
+    {"question": "Is there drought stress in Marathwada", "analysis_type": "crop_stress", "region": "marathwada", "region_resolvable": false, "comparison": false, "period_contains": null, "category": "informal region name"},
+    {"question": "Moisture stress in Vidarbha crops", "analysis_type": "crop_stress", "region": "vidarbha", "region_resolvable": false, "comparison": false, "period_contains": null, "category": "informal region name"},
+    {"question": "Show water stress in Rajasthan farmland", "analysis_type": "crop_stress", "region": "rajasthan", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "Are the crops in Bundelkhand under a dry spell", "analysis_type": "crop_stress", "region": "bundelkhand", "region_resolvable": false, "comparison": false, "period_contains": null, "category": "informal region name"},
+
+    {"question": "Reservoir levels in Telangana", "analysis_type": "water_extent", "region": "telangana", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "How big is Vembanad lake", "analysis_type": "water_extent", "region": "kerala", "comparison": false, "period_contains": null, "category": "named feature resolved to its state"},
+    {"question": "Surface water in Kerala backwaters", "analysis_type": "water_extent", "region": "kerala", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "Water body extent in Pune district", "analysis_type": "water_extent", "region": "pune", "comparison": false, "period_contains": null, "category": "district"},
+    {"question": "Has the dam in Bhopal shrunk", "analysis_type": "water_extent", "region": "bhopal", "comparison": true, "period_contains": null, "category": "implicit comparison"},
+
+    {"question": "How much has Bangalore grown since 2019", "analysis_type": "built_up", "region": "bangalore", "comparison": true, "period_contains": null, "category": "comparison"},
+    {"question": "Urban expansion in Surat between 2019 and 2023", "analysis_type": "built_up", "region": "surat", "comparison": true, "period_contains": null, "category": "comparison"},
+    {"question": "Show built-up area in Hyderabad", "analysis_type": "built_up", "region": "hyderabad", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "Is there illegal construction around Gurgaon", "analysis_type": "built_up", "region": "gurgaon", "comparison": false, "period_contains": null, "category": "colloquial city name"},
+    {"question": "Compare concrete cover in Chennai before and after 2020", "analysis_type": "built_up", "region": "chennai", "comparison": true, "period_contains": null, "category": "comparison"},
+
+    {"question": "Forest cover in Uttarakhand", "analysis_type": "green_cover", "region": "uttarakhand", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "Has deforestation increased in Chhattisgarh", "analysis_type": "green_cover", "region": "chhattisgarh", "comparison": true, "period_contains": null, "category": "comparison"},
+    {"question": "Tree canopy in Wayanad", "analysis_type": "green_cover", "region": "wayanad", "comparison": false, "period_contains": null, "category": "district"},
+    {"question": "Green cover loss in Delhi over time", "analysis_type": "green_cover", "region": "delhi", "comparison": true, "period_contains": null, "category": "comparison"},
+
+    {"question": "Bare ground in Jaisalmer", "analysis_type": "bare_ground", "region": "jaisalmer", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "Land degradation in Kutch", "analysis_type": "bare_ground", "region": "kutch", "comparison": false, "period_contains": null, "category": "district spelling variant"},
+    {"question": "How much barren land is in Bikaner", "analysis_type": "bare_ground", "region": "bikaner", "comparison": false, "period_contains": null, "category": "plain"},
+    {"question": "Desert expansion in western Rajasthan", "analysis_type": "bare_ground", "region": "rajasthan", "comparison": true, "period_contains": null, "category": "vague sub-region"},
+
+    {"question": "Compare flooding in Kerala before and after the monsoon", "analysis_type": "flood_extent", "region": "kerala", "comparison": true, "period_contains": null, "category": "comparison"},
+    {"question": "Flood extent in Assam this year versus last year", "analysis_type": "flood_extent", "region": "assam", "comparison": true, "period_contains": null, "category": "comparison"},
+    {"question": "Change in cropland in Punjab since 2020", "analysis_type": "vegetation_health", "region": "punjab", "comparison": true, "period_contains": null, "category": "comparison"},
+
+    {"question": "flooding kerala", "analysis_type": "flood_extent", "region": "kerala", "comparison": false, "period_contains": null, "category": "terse"},
+    {"question": "punjab crops", "analysis_type": "vegetation_health", "region": "punjab", "comparison": false, "period_contains": null, "category": "terse"},
+    {"question": "water assam 2022", "analysis_type": "water_extent", "region": "assam", "comparison": false, "period_contains": "2022-06-15", "category": "terse"},
+
+    {"question": "What is the weather forecast for Mumbai tomorrow", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "out of scope"},
+    {"question": "How many people live in Chennai", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "out of scope"},
+    {"question": "Write me a poem about rivers", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "out of scope"},
+    {"question": "How deep was the water in Kerala", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "unmeasurable by satellite"},
+    {"question": "How many houses were damaged in Assam", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "unmeasurable by satellite"},
+
+    {"question": "Show flooding in Mulugu", "analysis_type": "flood_extent", "region": "mulugu", "comparison": false, "period_contains": null, "category": "district created after 2015"},
+    {"question": "Vegetation in Balotra", "analysis_type": "vegetation_health", "region": "balotra", "comparison": false, "period_contains": null, "category": "district created after 2015"}
+  ]
+}

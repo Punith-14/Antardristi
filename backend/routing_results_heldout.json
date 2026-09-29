@@ -1,0 +1,170 @@
+{
+  "benchmark": "India EO Query Benchmark \u2014 held-out set",
+  "mode": "openai/gpt-oss-20b",
+  "run_at": "2026-09-20T15:32:42",
+  "cases_scored": 20,
+  "accuracy": {
+    "analysis": 0.8,
+    "region": 0.8,
+    "comparison": 0.85,
+    "period": 0.95,
+    "refusal": 0.9
+  },
+  "exact_match": 0.55,
+  "fallbacks": 0,
+  "by_category": {
+    "polite phrasing": 1.0,
+    "multi-clause": 1.0,
+    "indian english idiom": 0.0,
+    "relative date": 0.0,
+    "crop-specific vocabulary": 1.0,
+    "conversational comparison": 1.0,
+    "typo": 1.0,
+    "indirect stress phrasing": 1.0,
+    "informal region, new": 0.0,
+    "regional term for waterbody": 1.0,
+    "two-directional change verb": 0.0,
+    "metaphorical phrasing": 0.0,
+    "relative season": 1.0,
+    "informal region with change verb": 0.0,
+    "temporal filler words": 1.0,
+    "compound descriptor": 1.0,
+    "out of scope, advice": 1.0,
+    "out of scope, prediction": 0.0,
+    "out of scope, causation": 0.0,
+    "out of scope, damage": 0.0
+  },
+  "failures": [
+    {
+      "question": "please do the needful and check water logging in Patna",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "patna"
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": "patna"
+      },
+      "wrong_fields": [
+        "analysis"
+      ]
+    },
+    {
+      "question": "was there any inundation near Srinagar two years back",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "srinagar"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": "srinagar"
+      },
+      "wrong_fields": [
+        "period"
+      ]
+    },
+    {
+      "question": "check if the Konkan belt is showing signs of drying up",
+      "expected": {
+        "analysis": "crop_stress",
+        "region": "konkan"
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "analysis",
+        "region"
+      ]
+    },
+    {
+      "question": "I want to see whether the river near Varanasi has widened or narrowed",
+      "expected": {
+        "analysis": "water_extent",
+        "region": "varanasi"
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": "varanasi"
+      },
+      "wrong_fields": [
+        "comparison"
+      ]
+    },
+    {
+      "question": "has Indore been eating into the farmland around it",
+      "expected": {
+        "analysis": "built_up",
+        "region": "indore"
+      },
+      "got": {
+        "analysis": "built_up",
+        "region": "indore"
+      },
+      "wrong_fields": [
+        "comparison"
+      ]
+    },
+    {
+      "question": "is the Sundarbans losing its mangroves",
+      "expected": {
+        "analysis": "green_cover",
+        "region": "sundarbans"
+      },
+      "got": {
+        "analysis": "green_cover",
+        "region": "sundarbans"
+      },
+      "wrong_fields": [
+        "comparison"
+      ]
+    },
+    {
+      "question": "will it flood in Goa next month",
+      "expected": {
+        "analysis": null,
+        "region": null
+      },
+      "got": {
+        "analysis": null,
+        "region": "goa"
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "why did the Mysore lake dry up",
+      "expected": {
+        "analysis": null,
+        "region": null
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": "mysore"
+      },
+      "wrong_fields": [
+        "analysis",
+        "region",
+        "refusal"
+      ]
+    },
+    {
+      "question": "how many hectares of crop were destroyed in Vellore",
+      "expected": {
+        "analysis": null,
+        "region": null
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": "vellore"
+      },
+      "wrong_fields": [
+        "analysis",
+        "region",
+        "refusal"
+      ]
+    }
+  ]
+}

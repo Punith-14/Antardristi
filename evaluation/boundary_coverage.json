@@ -1,0 +1,327 @@
+{
+  "generated": "2026-09-22T12:35:36+00:00",
+  "boundary_source": "FAO/GAUL/2015/level2",
+  "boundary_vintage": "2015",
+  "catalogue": {
+    "states": 34,
+    "districts": 573
+  },
+  "post_2015_districts": {
+    "tested": 30,
+    "unresolvable": 30,
+    "share_unresolvable": 1.0,
+    "rows": [
+      {
+        "name": "Ladakh",
+        "parent": "Jammu and Kashmir",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Leh",
+        "parent": "Jammu and Kashmir",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Kargil",
+        "parent": "Jammu and Kashmir",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Bhadradri Kothagudem",
+        "parent": "Khammam",
+        "created": 2016,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Jagtial",
+        "parent": "Karimnagar",
+        "created": 2016,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Jayashankar Bhupalpally",
+        "parent": "Warangal",
+        "created": 2016,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Mancherial",
+        "parent": "Adilabad",
+        "created": 2016,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Mulugu",
+        "parent": "Jayashankar Bhupalpally",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Narayanpet",
+        "parent": "Mahbubnagar",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Balotra",
+        "parent": "Barmer",
+        "created": 2023,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Beawar",
+        "parent": "Ajmer",
+        "created": 2023,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Deeg",
+        "parent": "Bharatpur",
+        "created": 2023,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Kotputli-Behror",
+        "parent": "Jaipur",
+        "created": 2023,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Phalodi",
+        "parent": "Jodhpur",
+        "created": 2023,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Salumbar",
+        "parent": "Udaipur",
+        "created": 2023,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Niwari",
+        "parent": "Tikamgarh",
+        "created": 2018,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Mayiladuthurai",
+        "parent": "Nagapattinam",
+        "created": 2020,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Chengalpattu",
+        "parent": "Kancheepuram",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Tenkasi",
+        "parent": "Tirunelveli",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Kallakurichi",
+        "parent": "Villupuram",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Hnahthial",
+        "parent": "Lunglei",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Saitual",
+        "parent": "Aizawl",
+        "created": 2019,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Noklak",
+        "parent": "Tuensang",
+        "created": 2021,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Eastern West Khasi Hills",
+        "parent": "West Khasi Hills",
+        "created": 2021,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Alluri Sitharama Raju",
+        "parent": "Visakhapatnam",
+        "created": 2022,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Anakapalli",
+        "parent": "Visakhapatnam",
+        "created": 2022,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Konaseema",
+        "parent": "East Godavari",
+        "created": 2022,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Sri Sathya Sai",
+        "parent": "Anantapur",
+        "created": 2022,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Pakke-Kessang",
+        "parent": "East Kameng",
+        "created": 2018,
+        "status": "missing",
+        "resolved_as": null
+      },
+      {
+        "name": "Shi Yomi",
+        "parent": "West Siang",
+        "created": 2018,
+        "status": "missing",
+        "resolved_as": null
+      }
+    ]
+  },
+  "renamed_places": {
+    "tested": 13,
+    "resolved_via_alias": 6,
+    "rows": [
+      {
+        "name": "Odisha",
+        "renamed": 2011,
+        "status": "resolved",
+        "gaul_name": "Orissa",
+        "alias_needed": true
+      },
+      {
+        "name": "Puducherry",
+        "renamed": 2006,
+        "status": "missing",
+        "gaul_name": null,
+        "alias_needed": true
+      },
+      {
+        "name": "Uttarakhand",
+        "renamed": 2007,
+        "status": "missing",
+        "gaul_name": null,
+        "alias_needed": true
+      },
+      {
+        "name": "Bengaluru",
+        "renamed": 2014,
+        "status": "ambiguous",
+        "gaul_name": [
+          "Bangalore Rural (Karnataka)",
+          "Bangalore Urban (Karnataka)"
+        ],
+        "alias_needed": true
+      },
+      {
+        "name": "Mumbai",
+        "renamed": 1995,
+        "status": "missing",
+        "gaul_name": null,
+        "alias_needed": true
+      },
+      {
+        "name": "Chennai",
+        "renamed": 1996,
+        "status": "missing",
+        "gaul_name": null,
+        "alias_needed": true
+      },
+      {
+        "name": "Kolkata",
+        "renamed": 2001,
+        "status": "missing",
+        "gaul_name": null,
+        "alias_needed": true
+      },
+      {
+        "name": "Thiruvananthapuram",
+        "renamed": 1991,
+        "status": "missing",
+        "gaul_name": null,
+        "alias_needed": true
+      },
+      {
+        "name": "Prayagraj",
+        "renamed": 2018,
+        "status": "resolved",
+        "gaul_name": "Allahabad",
+        "alias_needed": true
+      },
+      {
+        "name": "Mysuru",
+        "renamed": 2014,
+        "status": "resolved",
+        "gaul_name": "Mysore",
+        "alias_needed": true
+      },
+      {
+        "name": "Belagavi",
+        "renamed": 2014,
+        "status": "resolved",
+        "gaul_name": "Belgaum",
+        "alias_needed": true
+      },
+      {
+        "name": "Kalaburagi",
+        "renamed": 2014,
+        "status": "resolved",
+        "gaul_name": "Gulbarga",
+        "alias_needed": true
+      },
+      {
+        "name": "Ballari",
+        "renamed": 2014,
+        "status": "resolved",
+        "gaul_name": "Bellary",
+        "alias_needed": true
+      }
+    ]
+  },
+  "conclusion": "Districts created after 2015 cannot be resolved and no alias fixes that - the boundary simply is not in the dataset. Places renamed before 2015 that GAUL still lists under old names ARE resolvable, and regions.NAME_ALIASES does so. The honest claim is 'any Indian district as it stood in 2015', not 'any Indian district'."
+}

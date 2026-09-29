@@ -1,0 +1,601 @@
+{
+  "benchmark": "India EO Query Benchmark v1",
+  "mode": "rules",
+  "run_at": "2026-09-20T15:19:51",
+  "cases_scored": 45,
+  "accuracy": {
+    "analysis": 0.9555555555555556,
+    "region": 0.1111111111111111,
+    "comparison": 1.0,
+    "period": 1.0,
+    "refusal": 0.9555555555555556
+  },
+  "exact_match": 0.1111111111111111,
+  "fallbacks": 0,
+  "by_category": {
+    "plain": 0.0,
+    "explicit month": 0.0,
+    "season": 0.0,
+    "indirect phrasing": 0.0,
+    "indian season": 0.0,
+    "district": 0.0,
+    "technical term": 0.0,
+    "informal region name": 0.0,
+    "named feature resolved to its state": 0.0,
+    "implicit comparison": 0.0,
+    "comparison": 0.0,
+    "colloquial city name": 0.0,
+    "district spelling variant": 0.0,
+    "vague sub-region": 0.0,
+    "terse": 0.0,
+    "out of scope": 1.0,
+    "unmeasurable by satellite": 1.0,
+    "district created after 2015": 0.0
+  },
+  "failures": [
+    {
+      "question": "Show flooded areas in Kerala",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "kerala"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "How much of Assam is flooded right now",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "assam"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Flooding in Kendrapara in August 2018",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "kendrapara"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Was Bihar inundated during the 2019 monsoon",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "bihar"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Which parts of Odisha were submerged after the July rains",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "odisha"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Vegetation health in Punjab during kharif 2023",
+      "expected": {
+        "analysis": "vegetation_health",
+        "region": "punjab"
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "How much cropland is there in Ludhiana",
+      "expected": {
+        "analysis": "vegetation_health",
+        "region": "ludhiana"
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Show me greenness across Haryana in rabi season",
+      "expected": {
+        "analysis": "vegetation_health",
+        "region": "haryana"
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "NDVI for Maharashtra in March 2023",
+      "expected": {
+        "analysis": "vegetation_health",
+        "region": "maharashtra"
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Crop cover in Nashik after sowing",
+      "expected": {
+        "analysis": "vegetation_health",
+        "region": "nashik"
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Is there drought stress in Marathwada",
+      "expected": {
+        "analysis": "crop_stress",
+        "region": "marathwada"
+      },
+      "got": {
+        "analysis": "crop_stress",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Moisture stress in Vidarbha crops",
+      "expected": {
+        "analysis": "crop_stress",
+        "region": "vidarbha"
+      },
+      "got": {
+        "analysis": "crop_stress",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Show water stress in Rajasthan farmland",
+      "expected": {
+        "analysis": "crop_stress",
+        "region": "rajasthan"
+      },
+      "got": {
+        "analysis": "crop_stress",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Are the crops in Bundelkhand under a dry spell",
+      "expected": {
+        "analysis": "crop_stress",
+        "region": "bundelkhand"
+      },
+      "got": {
+        "analysis": "crop_stress",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Reservoir levels in Telangana",
+      "expected": {
+        "analysis": "water_extent",
+        "region": "telangana"
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "How big is Vembanad lake",
+      "expected": {
+        "analysis": "water_extent",
+        "region": "kerala"
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Surface water in Kerala backwaters",
+      "expected": {
+        "analysis": "water_extent",
+        "region": "kerala"
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Water body extent in Pune district",
+      "expected": {
+        "analysis": "water_extent",
+        "region": "pune"
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Has the dam in Bhopal shrunk",
+      "expected": {
+        "analysis": "water_extent",
+        "region": "bhopal"
+      },
+      "got": {
+        "analysis": "water_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "How much has Bangalore grown since 2019",
+      "expected": {
+        "analysis": "built_up",
+        "region": "bangalore"
+      },
+      "got": {
+        "analysis": null,
+        "region": null
+      },
+      "wrong_fields": [
+        "analysis",
+        "region",
+        "refusal"
+      ]
+    },
+    {
+      "question": "Urban expansion in Surat between 2019 and 2023",
+      "expected": {
+        "analysis": "built_up",
+        "region": "surat"
+      },
+      "got": {
+        "analysis": "built_up",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Show built-up area in Hyderabad",
+      "expected": {
+        "analysis": "built_up",
+        "region": "hyderabad"
+      },
+      "got": {
+        "analysis": "built_up",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Is there illegal construction around Gurgaon",
+      "expected": {
+        "analysis": "built_up",
+        "region": "gurgaon"
+      },
+      "got": {
+        "analysis": "built_up",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Compare concrete cover in Chennai before and after 2020",
+      "expected": {
+        "analysis": "built_up",
+        "region": "chennai"
+      },
+      "got": {
+        "analysis": "built_up",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Forest cover in Uttarakhand",
+      "expected": {
+        "analysis": "green_cover",
+        "region": "uttarakhand"
+      },
+      "got": {
+        "analysis": "green_cover",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Has deforestation increased in Chhattisgarh",
+      "expected": {
+        "analysis": "green_cover",
+        "region": "chhattisgarh"
+      },
+      "got": {
+        "analysis": "green_cover",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Tree canopy in Wayanad",
+      "expected": {
+        "analysis": "green_cover",
+        "region": "wayanad"
+      },
+      "got": {
+        "analysis": "green_cover",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Green cover loss in Delhi over time",
+      "expected": {
+        "analysis": "green_cover",
+        "region": "delhi"
+      },
+      "got": {
+        "analysis": "green_cover",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Bare ground in Jaisalmer",
+      "expected": {
+        "analysis": "bare_ground",
+        "region": "jaisalmer"
+      },
+      "got": {
+        "analysis": "bare_ground",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Land degradation in Kutch",
+      "expected": {
+        "analysis": "bare_ground",
+        "region": "kutch"
+      },
+      "got": {
+        "analysis": "bare_ground",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "How much barren land is in Bikaner",
+      "expected": {
+        "analysis": "bare_ground",
+        "region": "bikaner"
+      },
+      "got": {
+        "analysis": "bare_ground",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Desert expansion in western Rajasthan",
+      "expected": {
+        "analysis": "bare_ground",
+        "region": "rajasthan"
+      },
+      "got": {
+        "analysis": "bare_ground",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Compare flooding in Kerala before and after the monsoon",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "kerala"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Flood extent in Assam this year versus last year",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "assam"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Change in cropland in Punjab since 2020",
+      "expected": {
+        "analysis": "vegetation_health",
+        "region": "punjab"
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "flooding kerala",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "kerala"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "punjab crops",
+      "expected": {
+        "analysis": "vegetation_health",
+        "region": "punjab"
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "water assam 2022",
+      "expected": {
+        "analysis": "water_extent",
+        "region": "assam"
+      },
+      "got": {
+        "analysis": null,
+        "region": null
+      },
+      "wrong_fields": [
+        "analysis",
+        "region",
+        "refusal"
+      ]
+    },
+    {
+      "question": "Show flooding in Mulugu",
+      "expected": {
+        "analysis": "flood_extent",
+        "region": "mulugu"
+      },
+      "got": {
+        "analysis": "flood_extent",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    },
+    {
+      "question": "Vegetation in Balotra",
+      "expected": {
+        "analysis": "vegetation_health",
+        "region": "balotra"
+      },
+      "got": {
+        "analysis": "vegetation_health",
+        "region": null
+      },
+      "wrong_fields": [
+        "region"
+      ]
+    }
+  ]
+}

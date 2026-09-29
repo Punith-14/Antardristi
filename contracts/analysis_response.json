@@ -1,0 +1,189 @@
+{
+  "_comment": "CONTRACT v1 - worked example of an Antardrishti analysis response. Frontend builds against this file. Evaluation scores against this shape. Backend must produce it. Numbers here are illustrative but realistic (Kendrapara district, Odisha, monsoon 2024).",
+
+  "schema_version": "1.0",
+  "request_id": "a41f9c2e-7b13-4d6a-9f80-2c5e8a1d3b47",
+  "generated_at": "2026-08-23T09:14:02.117Z",
+
+  "query": {
+    "text": "Show flood affected areas in Kendrapara after the July rains",
+    "resolved_intent": "flood_extent",
+    "resolved_mode": "disaster",
+    "routing_model": "openai/gpt-oss-20b",
+    "routing_confidence": 0.91
+  },
+
+  "region": {
+    "slug": "kendrapara",
+    "name": "Kendrapara",
+    "admin_level": "district",
+    "state": "Odisha",
+    "boundary_source": "FAO/GAUL/2015/level2",
+    "boundary_vintage": "2015",
+    "bbox": [86.15, 20.24, 87.05, 20.79],
+    "area_km2": 2644.0
+  },
+
+  "period": {
+    "mode": "comparison",
+    "pre": { "start": "2024-05-01", "end": "2024-05-31" },
+    "post": { "start": "2024-07-20", "end": "2024-08-03" }
+  },
+
+  "observation": {
+    "sensor_used": "sentinel-1",
+    "sensor_reason": "cloud_fraction_exceeded_optical_threshold",
+    "sensors_considered": ["sentinel-2", "sentinel-1"],
+    "scenes_available": 14,
+    "scenes_used": 6,
+    "scenes_rejected_by_cloud_filter": 8,
+    "cloud_fraction": 0.71,
+    "observable_area_km2": 2598.0,
+    "coverage_fraction": 0.983
+  },
+
+  "unobserved": {
+    "reason": null,
+    "masked_area_km2": 46.0,
+    "notes": [
+      "1.7% of the district was not observed in the post-event window.",
+      "Optical imagery was unusable: 71% mean cloud cover. SAR was used instead."
+    ]
+  },
+
+  "evidence": [
+    {
+      "id": "E1",
+      "quantity": "flood_extent",
+      "value": 187.4,
+      "unit": "km2",
+      "method": "Sentinel-1 VV Otsu threshold, permanent water excluded",
+      "model": null,
+      "threshold": -16.2,
+      "threshold_unit": "dB",
+      "confidence": 0.81,
+      "spatial_support_km2": 2598.0,
+      "source": "COPERNICUS/S1_GRD IW VV"
+    },
+    {
+      "id": "E2",
+      "quantity": "flood_extent_fraction",
+      "value": 7.21,
+      "unit": "percent",
+      "derived_from": ["E1"],
+      "denominator": "observable_area_km2",
+      "note": "Percentage is of observable area, not total district area."
+    },
+    {
+      "id": "E3",
+      "quantity": "permanent_water_area",
+      "value": 63.9,
+      "unit": "km2",
+      "method": "JRC/GSW1_4 occurrence >= 90, excluded from flood extent",
+      "source": "JRC/GSW1_4/GlobalSurfaceWater"
+    },
+    {
+      "id": "E4",
+      "quantity": "baseline_water_extent",
+      "value": 71.2,
+      "unit": "km2",
+      "period_ref": "pre",
+      "method": "Sentinel-1 VV Otsu threshold, permanent water excluded"
+    },
+    {
+      "id": "E5",
+      "quantity": "net_new_water",
+      "value": 116.2,
+      "unit": "km2",
+      "derived_from": ["E1", "E4"],
+      "method": "post minus pre water extent"
+    },
+    {
+      "id": "E6",
+      "quantity": "zone_count",
+      "value": 7,
+      "unit": "zones",
+      "method": "DBSCAN eps=3px min_samples=25 on flood mask"
+    }
+  ],
+
+  "zones": [
+    {
+      "id": "Z1",
+      "rank": 1,
+      "area_km2": 42.1,
+      "centroid": [86.42, 20.51],
+      "bbox": [86.31, 20.44, 86.55, 20.59],
+      "severity": "high",
+      "evidence_ref": "E6"
+    },
+    {
+      "id": "Z2",
+      "rank": 2,
+      "area_km2": 33.8,
+      "centroid": [86.78, 20.38],
+      "bbox": [86.69, 20.31, 86.88, 20.46],
+      "severity": "high",
+      "evidence_ref": "E6"
+    },
+    {
+      "id": "Z3",
+      "rank": 3,
+      "area_km2": 28.4,
+      "centroid": [86.61, 20.66],
+      "bbox": [86.52, 20.60, 86.71, 20.73],
+      "severity": "moderate",
+      "evidence_ref": "E6"
+    }
+  ],
+
+  "severity": {
+    "band": "high",
+    "basis": "flood_extent_fraction",
+    "thresholds": { "high": 5.0, "moderate": 2.0, "low": 0.0 }
+  },
+
+  "report": {
+    "text": "Flooding affected an estimated 187.4 km2 of Kendrapara district [E1], equal to 7.21% of the area that could be observed [E2]. Compared with the pre-monsoon baseline of 71.2 km2 [E4], this represents 116.2 km2 of newly inundated land [E5]. The water is distributed across 7 distinct zones [E6]; the largest covers 42.1 km2 in the central-west of the district. Persistent rivers and ponds totalling 63.9 km2 were excluded from these figures [E3]. Cloud cover of 71% made optical imagery unusable, so Sentinel-1 radar was used; 1.7% of the district remains unobserved.",
+    "generator_model": "openai/gpt-oss-120b",
+    "generated_at": "2026-08-23T09:14:06.882Z",
+    "fallback_used": false
+  },
+
+  "verification": {
+    "faithfulness_rate": 1.0,
+    "claims_total": 8,
+    "claims_supported": 8,
+    "claims_unsupported": 0,
+    "unsupported_claims": [],
+    "checked_by": "deterministic_numeric_matcher_v1"
+  },
+
+  "artifacts": {
+    "flood_tiles": "https://earthengine.googleapis.com/v1/projects/hackrx-submission/maps/{mapid-flood}/tiles/{z}/{x}/{y}",
+    "baseline_tiles": "https://earthengine.googleapis.com/v1/projects/hackrx-submission/maps/{mapid-baseline}/tiles/{z}/{x}/{y}",
+    "backscatter_tiles": "https://earthengine.googleapis.com/v1/projects/hackrx-submission/maps/{mapid-backscatter}/tiles/{z}/{x}/{y}"
+  },
+
+  "provenance": {
+    "pipeline_version": "0.4.0",
+    "models": [],
+    "datasets": [
+      { "id": "COPERNICUS/S1_GRD", "role": "primary imagery" },
+      { "id": "JRC/GSW1_4/GlobalSurfaceWater", "role": "permanent water mask" },
+      { "id": "FAO/GAUL/2015/level2", "role": "administrative boundary" }
+    ],
+    "stats_scale_m": 20,
+    "known_confusions": [
+      "Radar shadow behind terrain and tall structures can read as water.",
+      "Smooth wet soil and flooded paddy may be indistinguishable from open water.",
+      "Boundary vintage is 2015; districts created after that date are not resolvable."
+    ]
+  },
+
+  "suggested_next_queries": [
+    "Compare Kendrapara flooding with the same week last year",
+    "Which parts of Kendrapara are cropland within the flooded zones",
+    "Show reservoir levels upstream of Kendrapara"
+  ]
+}

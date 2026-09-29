@@ -1,0 +1,110 @@
+{
+  "name": "landcover_rf_v1",
+  "created": "2026-09-22T07:29:06+00:00",
+  "algorithm": "RandomForestClassifier",
+  "n_estimators": 60,
+  "max_depth": 10,
+  "sklearn_version": "1.9.1",
+  "feature_set": "optical + radar",
+  "total_nodes": 41064,
+  "approx_serialised_kb": 2406.1,
+  "python_features_in_order": [
+    "B2",
+    "B3",
+    "B4",
+    "B8",
+    "B11",
+    "B12",
+    "ndvi",
+    "ndwi",
+    "mndwi",
+    "ndbi",
+    "ndmi",
+    "bsi",
+    "VV",
+    "VH",
+    "vv_vh_ratio"
+  ],
+  "classes": {
+    "1": "water",
+    "2": "vegetation",
+    "3": "built-up",
+    "4": "bare"
+  },
+  "training_samples": 8400,
+  "training_districts": [
+    "Ahmadabad",
+    "Cuttack",
+    "Dehra Dun",
+    "Kerala",
+    "Ludhiana",
+    "Punjab",
+    "Thrissur"
+  ],
+  "holdout_districts": [
+    "Jaisalmer",
+    "Bangalore Urban"
+  ],
+  "holdout_samples": 2400,
+  "split": "spatial: whole districts held out",
+  "results": {
+    "water": {
+      "rf": {
+        "iou": 0.7162,
+        "precision": 0.9712,
+        "recall": 0.7317
+      },
+      "index_rule": {
+        "index": "mndwi",
+        "threshold": -0.15,
+        "iou_on_this_test_set": 0.5793,
+        "iou_reported_in_surface_py": 0.466
+      },
+      "change": 0.1369
+    },
+    "vegetation": {
+      "rf": {
+        "iou": 0.4523,
+        "precision": 0.7918,
+        "recall": 0.5133
+      },
+      "index_rule": {
+        "index": "ndvi",
+        "threshold": 0.2,
+        "iou_on_this_test_set": 0.3807,
+        "iou_reported_in_surface_py": 0.888
+      },
+      "change": 0.0716
+    },
+    "built-up": {
+      "rf": {
+        "iou": 0.4335,
+        "precision": 0.7537,
+        "recall": 0.505
+      },
+      "index_rule": {
+        "index": "ndbi",
+        "threshold": -0.1,
+        "iou_on_this_test_set": 0.2742,
+        "iou_reported_in_surface_py": 0.057
+      },
+      "change": 0.1593
+    },
+    "bare": {
+      "rf": {
+        "iou": 0.4355,
+        "precision": 0.4607,
+        "recall": 0.8883
+      },
+      "index_rule": {
+        "index": "bsi",
+        "threshold": 0.15,
+        "iou_on_this_test_set": 0.3737,
+        "iou_reported_in_surface_py": 0.747
+      },
+      "change": 0.0617
+    }
+  },
+  "source_data": "landcover_samples.csv",
+  "note": "Features and order must match backend/indices.py. Scored against the index thresholds in surface.py on the same held-out pixels."
+}

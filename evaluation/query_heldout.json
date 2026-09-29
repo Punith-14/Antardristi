@@ -1,0 +1,52 @@
+{
+  "name": "India EO Query Benchmark — held-out set",
+  "description": "Twenty queries written after routing reached 100% on the development set, deliberately in phrasings and regions that were never used for tuning. Run ONCE. Whatever it scores is the reported figure.",
+  "created": "2026-09-20",
+  "protocol": "The prompt in routing.py must not be changed in response to these results. If it is, this set is spent and a new one is required. The development-set score of 100% reflects four rounds of prompt tuning against that set and overstates real performance; this set exists to produce a number that does not.",
+  "differences_from_development_set": [
+    "No region reused from the development set",
+    "Longer, multi-clause and conversational phrasings",
+    "Indian English constructions ('kindly', 'do the needful')",
+    "Deliberate typos and transliteration variants",
+    "Relative date expressions ('two years back', 'last winter')",
+    "Out-of-scope cases of new kinds: advice-seeking, prediction, causation"
+  ],
+  "fields": {
+    "question": "what a user would type",
+    "analysis_type": "expected analysis, or null when out of scope",
+    "region": "place name that should be extracted, or null",
+    "region_resolvable": "whether it exists in FAO GAUL 2015; absent means true",
+    "comparison": "true when the question asks for change",
+    "period_contains": "a date the window must include, or null",
+    "category": "what this case tests"
+  },
+  "cases": [
+    {"question": "Could you kindly show me the flood situation in Cuttack district", "analysis_type": "flood_extent", "region": "cuttack", "comparison": false, "period_contains": null, "category": "polite phrasing"},
+    {"question": "I am writing a report on Guwahati and need to know how much of it went under water", "analysis_type": "flood_extent", "region": "guwahati", "comparison": false, "period_contains": null, "category": "multi-clause"},
+    {"question": "please do the needful and check water logging in Patna", "analysis_type": "flood_extent", "region": "patna", "comparison": false, "period_contains": null, "category": "indian english idiom"},
+    {"question": "was there any inundation near Srinagar two years back", "analysis_type": "flood_extent", "region": "srinagar", "comparison": false, "period_contains": "2024-06-01", "category": "relative date"},
+
+    {"question": "state of paddy fields in Thanjavur this season", "analysis_type": "vegetation_health", "region": "thanjavur", "comparison": false, "period_contains": null, "category": "crop-specific vocabulary"},
+    {"question": "how are the crops doing around Amravati compared to a couple of years ago", "analysis_type": "vegetation_health", "region": "amravati", "comparison": true, "period_contains": null, "category": "conversational comparison"},
+    {"question": "vegetaion cover in Coimbatore", "analysis_type": "vegetation_health", "region": "coimbatore", "comparison": false, "period_contains": null, "category": "typo"},
+
+    {"question": "are farmers in Jodhpur facing water shortage in their fields", "analysis_type": "crop_stress", "region": "jodhpur", "comparison": false, "period_contains": null, "category": "indirect stress phrasing"},
+    {"question": "check if the Konkan belt is showing signs of drying up", "analysis_type": "crop_stress", "region": "konkan", "region_resolvable": false, "comparison": false, "period_contains": null, "category": "informal region, new"},
+
+    {"question": "how full are the tanks around Madurai", "analysis_type": "water_extent", "region": "madurai", "comparison": false, "period_contains": null, "category": "regional term for waterbody"},
+    {"question": "I want to see whether the river near Varanasi has widened or narrowed", "analysis_type": "water_extent", "region": "varanasi", "comparison": true, "period_contains": null, "category": "two-directional change verb"},
+
+    {"question": "has Indore been eating into the farmland around it", "analysis_type": "built_up", "region": "indore", "comparison": true, "period_contains": null, "category": "metaphorical phrasing"},
+    {"question": "construction activity in Belagavi last winter", "analysis_type": "built_up", "region": "belagavi", "comparison": false, "period_contains": "2025-12-15", "category": "relative season"},
+
+    {"question": "is the Sundarbans losing its mangroves", "analysis_type": "green_cover", "region": "sundarbans", "region_resolvable": false, "comparison": true, "period_contains": null, "category": "informal region with change verb"},
+    {"question": "tree cover situation in Dehradun as of now", "analysis_type": "green_cover", "region": "dehradun", "comparison": false, "period_contains": null, "category": "temporal filler words"},
+
+    {"question": "how much of Raipur district is lying uncultivated and bare", "analysis_type": "bare_ground", "region": "raipur", "comparison": false, "period_contains": null, "category": "compound descriptor"},
+
+    {"question": "what should the collector of Nagpur do about the drought", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "out of scope, advice"},
+    {"question": "will it flood in Goa next month", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "out of scope, prediction"},
+    {"question": "why did the Mysore lake dry up", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "out of scope, causation"},
+    {"question": "how many hectares of crop were destroyed in Vellore", "analysis_type": null, "region": null, "comparison": false, "period_contains": null, "category": "out of scope, damage"}
+  ]
+}

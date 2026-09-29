@@ -1,0 +1,66 @@
+# Secrets --------------------------------------------------------------------
+#
+# .env holds GROQ_API_KEY and EE_PROJECT_ID. Earth Engine credentials normally
+# live outside the project in ~/.config/earthengine, but they are listed here
+# too in case anyone copies them in - that file is a long-lived secret.
+.env
+*.env
+credentials
+credentials.json
+*_credentials.json
+
+
+# Dependencies ----------------------------------------------------------------
+#
+# venv/ sits inside backend/ for historical reasons. It is several hundred
+# megabytes, and is why file searches in this project are slow.
+backend/venv/
+venv/
+.venv/
+env/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+
+# Python ----------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+
+# Trained models --------------------------------------------------------------
+#
+# The binaries are large and are rebuilt by scripts/train_landcover.py. The
+# metadata JSON beside them IS tracked: it records what each model was trained
+# on, which features in which order, and what it scored. Without it a .pkl is
+# an unlabelled blob.
+models/*.pkl
+models/*.pt
+models/*.pth
+
+
+# Generated imagery and vectors -----------------------------------------------
+#
+# Refetched from Earth Engine on demand.
+data/raw/
+outputs/images/
+outputs/vectors/
+
+
+# Notebooks -------------------------------------------------------------------
+#
+# The notebooks themselves are tracked; their execution state is not. Clear
+# outputs before committing: an OAuth verification code was once committed in
+# a cell output of gee_auth.ipynb.
+.ipynb_checkpoints/
+
+
+# Editor and OS ---------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
