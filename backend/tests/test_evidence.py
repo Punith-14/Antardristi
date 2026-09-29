@@ -2,7 +2,7 @@
 
 import pytest
 
-from evidence import EvidenceBuilder, Observation, coverage_warning, utc_now
+from core.evidence import EvidenceBuilder, Observation, coverage_warning, utc_now
 
 
 def test_ids_are_assigned_in_order():

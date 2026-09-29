@@ -2,13 +2,13 @@
 
 import pytest
 
-from report import (
+from pipeline.report import (
     build_report,
     collect_extra_values,
     render_template_report,
     _strip_thinking,
 )
-from verification import check_caveats, verify_report
+from core.verification import check_caveats, verify_report
 
 
 def test_template_report_is_self_consistent(contract):

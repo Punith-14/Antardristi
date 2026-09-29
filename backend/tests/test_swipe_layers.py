@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-import analysis
+from pipeline import analysis
 
 BACKEND = Path(__file__).resolve().parent.parent
-SOURCE = (BACKEND / "analysis.py").read_text(encoding="utf-8")
+SOURCE = (BACKEND / "pipeline" / "analysis.py").read_text(encoding="utf-8")
 
 
 # ------------------------------------------------------------- guard clauses

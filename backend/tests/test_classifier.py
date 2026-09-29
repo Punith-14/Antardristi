@@ -13,10 +13,12 @@ from pathlib import Path
 
 import pytest
 
-import classifier
-from surface import ANALYSES
+from core import paths
 
-MODELS = Path(__file__).resolve().parent.parent.parent / "models"
+from detection import classifier
+from detection.surface import ANALYSES
+
+MODELS = paths.MODELS
 METADATA = MODELS / f"{classifier.MODEL_NAME}.json"
 PICKLE = MODELS / f"{classifier.MODEL_NAME}.pkl"
 
@@ -85,7 +87,7 @@ def test_feature_order_matches_what_inference_builds():
 
 @needs_model
 def test_every_index_feature_exists_in_indices_module():
-    import indices
+    from geo import indices
 
     for name in classifier.INDEX_NAMES:
         assert name in indices.INDEX_FUNCTIONS, f"{name} is not computable"
@@ -125,7 +127,7 @@ def test_pinned_sklearn_matches_the_training_version():
 
 @needs_model
 def test_requirements_pins_the_training_version():
-    requirements = (Path(__file__).resolve().parent.parent / "requirements.txt")
+    requirements = (paths.BACKEND / "requirements.txt")
     trained_with = classifier.metadata()["sklearn_version"]
     assert f"scikit-learn=={trained_with}" in requirements.read_text(encoding="utf-8"), (
         "requirements.txt must pin the exact scikit-learn the model was "

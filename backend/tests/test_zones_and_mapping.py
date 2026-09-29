@@ -7,8 +7,8 @@ pure functions around it are covered here.
 
 import pytest
 
-import zones as z
-from mapping import CONTINUOUS, DISCRETE, display_hints
+from geo import zones as z
+from geo.mapping import CONTINUOUS, DISCRETE, display_hints
 
 
 ZONES = [
@@ -161,7 +161,7 @@ def test_good_reliability_has_no_banner():
 
 
 def test_every_analysis_is_classified_as_discrete_or_continuous():
-    from surface import ANALYSES
+    from detection.surface import ANALYSES
 
     known = DISCRETE | CONTINUOUS
     for name in ANALYSES:

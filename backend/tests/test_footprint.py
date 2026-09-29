@@ -20,11 +20,13 @@ from pathlib import Path
 
 import pytest
 
+from core import paths
+
 BACKEND = Path(__file__).resolve().parent.parent
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-import footprint  # noqa: E402
+from geo import footprint  # noqa: E402
 
 # Roughly Kuttanad, where the Kerala flood zones sit.
 KUTTANAD = [76.3, 9.4, 76.6, 9.7]
@@ -204,7 +206,7 @@ def test_the_area_is_reported_so_the_user_can_sanity_check_it():
 def test_the_frontend_and_backend_limits_agree():
     """lib/bbox.js duplicates these so the user hears "too big" while still
     holding the mouse. If they drift, the UI accepts a box the API rejects."""
-    js = (BACKEND.parent / "frontend" / "src" / "lib" / "bbox.js").read_text(
+    js = (paths.PROJECT_ROOT / "frontend" / "src" / "lib" / "bbox.js").read_text(
         encoding="utf-8"
     )
     assert f"MAX_AREA_KM2 = {int(footprint.MAX_AREA_KM2)}" in js
@@ -222,7 +224,7 @@ def test_geometry_starts_earth_engine_itself(monkeypatch):
     at request time, not at startup, because three modules each had their own
     copy of the setup and a new code path went through none of them.
     """
-    import earth_engine
+    from core import earth_engine
 
     called = []
     monkeypatch.setattr(earth_engine, "initialize", lambda *a, **k: called.append(1))
@@ -236,14 +238,23 @@ def test_initialisation_lives_in_exactly_one_place():
     """Three copies is what let a new path miss it. A fourth would do the same."""
     import re
 
-    backend = Path(__file__).resolve().parent.parent
+    # Our own packages only. rglob from backend/ descends into venv/ - many
+    # thousands of files, which took this one test to 94 seconds and the whole
+    # suite from 3 seconds to 95.
+    packages = ("core", "geo", "detection", "pipeline", "legacy",
+                "scripts", "manual_checks")
+
+    candidates = [paths.BACKEND / "main.py"]
+    for package in packages:
+        candidates.extend(sorted((paths.BACKEND / package).glob("*.py")))
+
     offenders = []
-    for path in backend.glob("*.py"):
+    for path in candidates:
         if path.name == "earth_engine.py":
             continue
         source = path.read_text(encoding="utf-8")
         if re.search(r"^\s*ee\.Initialize\(", source, re.M):
-            offenders.append(path.name)
+            offenders.append(str(path.relative_to(paths.BACKEND)))
 
     assert not offenders, (
         f"{offenders} call ee.Initialize directly. Use earth_engine.initialize()."
@@ -299,7 +310,7 @@ def test_a_question_with_no_region_and_no_shape_is_still_refused():
 def test_the_understood_line_names_the_drawn_area():
     """"no region identified" reads as a failure when the caller deliberately
     supplied a shape instead of a name."""
-    import routing
+    from pipeline import routing
 
     decision = {
         "analysis_type": "flood_extent",

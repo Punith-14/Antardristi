@@ -10,7 +10,7 @@ from datetime import date
 
 import pytest
 
-import routing
+from pipeline import routing
 
 
 TODAY = date(2026, 9, 20)

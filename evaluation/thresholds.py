@@ -1,5 +1,5 @@
 """
-Numpy mirrors of the thresholding in backend/sar.py.
+Numpy mirrors of the thresholding in backend/detection/sar.py.
 
 Earth Engine cannot run numpy, so the production path and the evaluation path
 are necessarily two implementations of one method. They must stay in step, or
@@ -12,7 +12,7 @@ So the water class is everything BELOW the threshold.
 
 import numpy as np
 
-# Same bounds as backend/sar.py. Keep in sync.
+# Same bounds as backend/detection/sar.py. Keep in sync.
 WATER_DB_MIN = -25.0
 WATER_DB_MAX = -12.0
 FALLBACK_DB = -16.0
@@ -98,7 +98,7 @@ def method_otsu(image):
 
 
 def method_clamped_otsu(image):
-    """What backend/sar.py currently does."""
+    """What backend/detection/sar.py currently does."""
     threshold, source, raw = clamped_otsu(image)
     return apply_threshold(image, threshold), {
         "threshold": threshold,
@@ -277,7 +277,7 @@ def dual_open_water_or_double_bounce(vv_db=VV_WATER_DB,
     return run
 
 
-# What backend/sar.py now ships, mirrored here. These two files are two
+# What backend/detection/sar.py now ships, mirrored here. These two files are two
 # implementations of one method and must stay in step, or the evaluation stops
 # measuring what users actually get.
 SHIPPED_DB = -20.0

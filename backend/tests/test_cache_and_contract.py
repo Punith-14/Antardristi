@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-import cache
+from core import cache
 
 
 @pytest.fixture(autouse=True)

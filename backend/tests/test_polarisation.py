@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-EVALUATION = Path(__file__).resolve().parent.parent.parent / "evaluation"
+EVALUATION = Path(__file__).resolve().parents[2] / "evaluation"
 if str(EVALUATION) not in sys.path:
     sys.path.insert(0, str(EVALUATION))
 

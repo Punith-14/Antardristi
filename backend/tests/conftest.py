@@ -1,8 +1,8 @@
 """
 Shared fixtures.
 
-The backend uses flat imports (`import sar`, `from evidence import ...`), so the
-backend directory goes on sys.path before anything is imported.
+Modules live in packages under backend/ (core, geo, detection, pipeline),
+so backend/ goes on sys.path and imports read `from detection import sar`.
 """
 
 import json

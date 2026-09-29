@@ -20,7 +20,7 @@ BACKEND = Path(__file__).resolve().parent.parent
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-import regions  # noqa: E402
+from geo import regions  # noqa: E402
 
 
 # A cut-down GAUL index carrying the awkward cases: a name that is both a state

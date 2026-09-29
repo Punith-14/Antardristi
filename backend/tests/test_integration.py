@@ -115,7 +115,7 @@ def test_zones_geojson_carries_outlines_and_markers():
 def test_the_model_respects_the_evidence(contract):
     """The model receives only the evidence array. If it invents a figure the
     verifier catches it and we fall back - so a pass here means it complied."""
-    from report import build_report
+    from pipeline.report import build_report
 
     report, verification = build_report(contract, prefer_llm=True)
 
@@ -139,7 +139,7 @@ def test_masks_behave_over_a_landlocked_control():
     reporting area inside landlocked Punjab is wrong by definition."""
     import ee
 
-    import analysis
+    from pipeline import analysis
 
     analysis._initialize()
 
@@ -164,7 +164,7 @@ def test_admin_boundaries_are_land_only():
     reference, which is how we established that no sea enters the statistics."""
     import ee
 
-    import analysis
+    from pipeline import analysis
 
     analysis._initialize()
     geometry, meta = analysis.resolve_geometry("kerala")

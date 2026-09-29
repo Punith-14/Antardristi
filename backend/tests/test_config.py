@@ -11,10 +11,12 @@ from pathlib import Path
 
 import pytest
 
-import sar
-from surface import ANALYSES, RELIABILITY_ORDER, catalogue
+from core import paths
 
-VALIDATION_FILE = Path(__file__).resolve().parent.parent / "surface_validation.json"
+from detection import sar
+from detection.surface import ANALYSES, RELIABILITY_ORDER, catalogue
+
+VALIDATION_FILE = paths.RESULTS / "surface_validation.json"
 
 
 # ------------------------------------------------------------ every analysis
@@ -169,7 +171,7 @@ def test_validation_numbers_live_in_exactly_one_place():
     """
     from pathlib import Path
 
-    source = (Path(__file__).resolve().parent.parent / "main.py").read_text(
+    source = (paths.BACKEND / "main.py").read_text(
         encoding="utf-8"
     )
 
@@ -190,7 +192,7 @@ def test_the_accuracy_caveat_is_arithmetic_not_prose():
     """
     from pathlib import Path
 
-    source = (Path(__file__).resolve().parent.parent / "analysis.py").read_text(
+    source = (paths.BACKEND / "pipeline" / "analysis.py").read_text(
         encoding="utf-8"
     )
     caveat = source.split("This detection method scores")[1][:600]
@@ -219,7 +221,7 @@ def test_the_fallback_does_not_claim_the_better_rules_accuracy():
 
 
 def test_the_evaluation_mirror_matches_what_ships():
-    """Earth Engine cannot run numpy, so backend/sar.py and
+    """Earth Engine cannot run numpy, so backend/detection/sar.py and
     evaluation/thresholds.py are two implementations of one method. If they
     drift, the evaluation measures something other than what users get - and it
     drifts silently, because both halves keep working.
@@ -227,7 +229,7 @@ def test_the_evaluation_mirror_matches_what_ships():
     import sys
     from pathlib import Path
 
-    evaluation = Path(__file__).resolve().parent.parent.parent / "evaluation"
+    evaluation = paths.EVALUATION
     if str(evaluation) not in sys.path:
         sys.path.insert(0, str(evaluation))
 

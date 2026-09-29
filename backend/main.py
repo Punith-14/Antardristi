@@ -15,21 +15,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import analysis
-import regions
-import cache
-import footprint
-import routing
-import sar
-import surface
-from gee_fetch import NoUsableImagery, analyze_region_water
-from report import build_report
-from ndwi import detect_water_rgb
-from query_parser import parse_query
-from regions import REGIONS, get_region_geometry, resolve_region
+from pipeline import analysis
+from geo import regions
+from core import cache
+from geo import footprint
+from pipeline import routing
+from detection import sar
+from detection import surface
+from legacy.gee_fetch import NoUsableImagery, analyze_region_water
+from pipeline.report import build_report
+from legacy.ndwi import detect_water_rgb
+from legacy.query_parser import parse_query
+from geo.regions import REGIONS, get_region_geometry, resolve_region
+
+from core import paths
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = paths.PROJECT_ROOT
 UPLOAD_DIR = BASE_DIR / "data" / "raw" / "uploads"
 
 app = FastAPI(title="Antardrishti Prototype API")

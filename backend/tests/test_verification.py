@@ -7,7 +7,7 @@ during development. Each one cost real debugging time; none should return.
 
 import pytest
 
-from verification import check_caveats, normalise, summarise, verify_report
+from core.verification import check_caveats, normalise, summarise, verify_report
 
 
 # ------------------------------------------------------------ core behaviour

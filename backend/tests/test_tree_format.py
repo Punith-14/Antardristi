@@ -11,7 +11,7 @@ import re
 
 import pytest
 
-import classifier
+from detection import classifier
 
 sklearn = pytest.importorskip("sklearn", reason="scikit-learn not installed")
 from sklearn.tree import DecisionTreeClassifier  # noqa: E402
