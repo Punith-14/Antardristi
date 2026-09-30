@@ -15,7 +15,9 @@ import ee
 from core import earth_engine
 from geo import mapping
 from geo import regions
+from detection import optical
 from detection import sar
+from detection import surface
 from geo import zones as zone_extraction
 from core.evidence import EvidenceBuilder, Observation, build_provenance, coverage_warning, utc_now
 
@@ -161,39 +163,25 @@ def choose_sensor(region, start_date, end_date, force=None):
     return "sentinel-2", "optical_conditions_acceptable", fraction, available
 
 
-def analyse_flood(
-    region_geometry,
-    region_meta,
-    post_start,
-    post_end,
-    pre_start=None,
-    pre_end=None,
-    force_sensor=None,
-    scale=100,
-):
-    """Flood extent for a region and window, optionally against a baseline.
+SENSORS = ("sentinel-1", "sentinel-2")
 
-    Returns a dict matching the analysis response contract.
+# "threshold" is the validated darkness rule that ships. "change" compares
+# against a dry baseline and is unvalidated until notebook 06 has run.
+METHODS = ("threshold", "change")
+
+
+def _detect_sar(region, post_start, post_end, scale, method="threshold",
+                pre_start=None, pre_end=None):
+    """The post-event SAR detection, and how to repeat it for a baseline.
+
+    Returns a dict the shared flood assembly reads. Everything sensor-specific
+    lives in here or in _detect_optical; everything after them is identical,
+    which is what makes the two results comparable.
+
+    method="change" swaps the darkness rule for change detection against a
+    dry baseline (see sar.change_mask). It needs the pre-event window, and it
+    is unvalidated - the result says so.
     """
-    _initialize()
-
-    region = region_geometry
-    region_area = region.area(maxError=100).getInfo() / 1_000_000
-
-    sensor, reason, cloud, optical_scenes = choose_sensor(
-        region, post_start, post_end, force_sensor
-    )
-
-    builder = EvidenceBuilder()
-    permanent = permanent_water_mask(region)
-
-    if sensor != "sentinel-1":
-        raise NotImplementedError(
-            "Optical flood path is not wired into this service yet. Our Kerala "
-            "measurement showed it is unusable in monsoon conditions; SAR is the "
-            "primary path. Pass force_sensor='sentinel-1' meanwhile."
-        )
-
     collection = sar.get_collection(region, post_start, post_end)
     if collection.size().getInfo() == 0:
         raise sar.NoSarImagery(post_start, post_end)
@@ -206,12 +194,222 @@ def analyse_flood(
         region, post_start, post_end, relative_orbit=orbit, scale=scale
     )
 
-    # MEASURE the footprint, never assume it. Sentinel-1's swath is ~250 km and
-    # we restrict to one relative orbit for geometric consistency, so a single
-    # orbit track frequently does not cover a whole state. Asserting full
-    # coverage here would be the exact failure this evidence record exists to
-    # prevent.
-    observable_area = area_km2(post_composite.mask(), region, scale)
+    notes = []
+    method_text = (
+        f"Sentinel-1 {post_info['polarisation']} at "
+        f"{post_info['threshold']} dB ({post_info['threshold_source']}), "
+        "permanent water excluded"
+    )
+    validation = post_info.get("validation")
+
+    if method == "change":
+        # The darkness mask is replaced, not added to afterwards: change_mask
+        # already contains the darkness rule as its first branch, so every
+        # pixel the threshold method finds, this finds too.
+        pre_composite = sar.baseline_composite(
+            region, pre_start, pre_end, relative_orbit=orbit,
+            polarisations=tuple(post_info["polarisation"].split("+")),
+        )
+        post_mask = sar.change_mask(post_composite, pre_composite)
+        method_text = (
+            f"Sentinel-1 {post_info['polarisation']} change detection: below "
+            f"{sar.CHANGE_DARK_DB} dB, or more than {abs(sar.CHANGE_DROP_DB):g} dB "
+            f"darker than the {pre_start} to {pre_end} median and below "
+            f"{sar.CHANGE_CEILING_DB} dB; permanent water excluded"
+        )
+        # The darkness rule's scores do not describe this rule. Borrowing them
+        # would be the misattribution the whole evidence record exists to stop.
+        validation = sar.CHANGE_VALIDATION
+        notes.append(sar.CHANGE_VALIDATION_CAVEAT if validation
+                     else sar.CHANGE_NOT_VALIDATED_NOTE)
+
+    if post_info["threshold_source"] == "otsu_clamped":
+        notes.append(
+            f"The adaptive threshold was overruled by a physical bound "
+            f"(Otsu returned {post_info['threshold_raw']} dB, clamped to "
+            f"{post_info['threshold']} dB). This usually means the scene lacked "
+            "a clear land/water separation, so the extent is less reliable."
+        )
+    if post_info.get("degraded"):
+        # sar.detect_water carried this reason out precisely so it would be
+        # reported. It never was: the numbers switched to the weaker rule's
+        # while nothing in the result said the rule had changed.
+        notes.append(f"Weaker method used: {post_info['degraded']}.")
+
+    def detect_pre(pre_start, pre_end):
+        # Same threshold for both windows. Letting Otsu re-fit on the dry
+        # baseline is wrong twice over: it assumes a bimodal histogram that a
+        # dry scene does not have, and any difference it produces mixes real
+        # change with threshold drift.
+        pre_mask, _, pre_info = sar.detect_water(
+            region, pre_start, pre_end, relative_orbit=orbit, scale=scale,
+            threshold_db=post_info["threshold"],
+        )
+        method = (
+            f"Sentinel-1 {pre_info['polarisation']} at the same "
+            f"{pre_info['threshold']} dB threshold and relative orbit as the "
+            "post-event window"
+        )
+        return pre_mask, None, method
+
+    return {
+        "sensor": "sentinel-1",
+        "mask": post_mask,
+        # MEASURE the footprint, never assume it. Sentinel-1's swath is ~250 km
+        # and we restrict to one relative orbit for geometric consistency, so a
+        # single track frequently does not cover a whole state.
+        "valid": post_composite.mask(),
+        # SAR's water mask is already masked where the composite has no data,
+        # so it is not ANDed with `valid` again - kept exactly as it was.
+        "restrict_to_valid": False,
+        "scene_count": post_info["scene_count"],
+        "scenes_available": post_info["scene_count"],
+        "method": method_text,
+        "threshold": post_info["threshold"],
+        "threshold_unit": "dB",
+        "source": f"{sar.S1_COLLECTION} IW {post_info['polarisation']}",
+        "validation": validation,
+        "notes": notes,
+        "detect_pre": detect_pre,
+        "no_pre_imagery": (sar.NoSarImagery,),
+        # Same orbit means the same footprint, so the baseline is measured over
+        # the whole region as it always has been.
+        "baseline_common_area": False,
+        "dataset": sar.S1_COLLECTION,
+        "known_confusions": list(sar.KNOWN_CONFUSIONS),
+        "reliability": "moderate" if validation else "unvalidated",
+        "internal": {"composite": post_composite, "orbit": orbit},
+    }
+
+
+def _detect_optical(region, post_start, post_end, cloud_limit):
+    """The post-event optical detection, in the same shape as _detect_sar."""
+    post_mask, post_valid, post_image, post_info = optical.detect_water(
+        region, post_start, post_end, cloud_limit=cloud_limit
+    )
+
+    notes = []
+    if post_info.get("validation"):
+        # Appended after the shared accuracy note, which states the scores;
+        # this says why those scores are not a like-for-like win over radar.
+        notes.append(optical.VALIDATION_CAVEAT)
+    else:
+        notes.append(optical.NOT_VALIDATED_NOTE)
+
+    def detect_pre(pre_start, pre_end):
+        # Same index, same threshold, same cloud filter. A different threshold
+        # on the baseline would put a change of method into the "change".
+        pre_mask, pre_valid, _, pre_info = optical.detect_water(
+            region, pre_start, pre_end, cloud_limit=cloud_limit,
+            threshold=post_info["threshold"],
+        )
+        method = (
+            f"Sentinel-2 {pre_info['index'].upper()} above the same "
+            f"{pre_info['threshold']} threshold as the post-event window"
+        )
+        return pre_mask, pre_valid, method
+
+    return {
+        "sensor": "sentinel-2",
+        "mask": post_mask,
+        "valid": post_valid,
+        "restrict_to_valid": True,
+        "scene_count": post_info["scene_count"],
+        "scenes_available": post_info["scenes_available"],
+        "method": optical.method_text(post_info),
+        "threshold": post_info["threshold"],
+        "threshold_unit": post_info["threshold_unit"],
+        "source": f"{optical.S2_COLLECTION} {post_info['index'].upper()}",
+        "validation": post_info.get("validation"),
+        "notes": notes,
+        "detect_pre": detect_pre,
+        "no_pre_imagery": (surface.NoOpticalImagery,),
+        # Cloud moves between windows. Comparing water seen through one set of
+        # gaps against water seen through another would report the cloud
+        # moving as water appearing - so the baseline is measured only where
+        # BOTH windows were clear.
+        "baseline_common_area": True,
+        "dataset": optical.S2_COLLECTION,
+        "known_confusions": list(optical.KNOWN_CONFUSIONS),
+        "reliability": "moderate" if post_info.get("validation") else "unvalidated",
+        # No backscatter basemap: the composite is reflectance, not dB.
+        "internal": {"composite": None, "true_colour": post_image, "orbit": None},
+    }
+
+
+def analyse_flood(
+    region_geometry,
+    region_meta,
+    post_start,
+    post_end,
+    pre_start=None,
+    pre_end=None,
+    force_sensor=None,
+    scale=100,
+    cloud_limit=optical.DEFAULT_CLOUD_LIMIT,
+    method="threshold",
+):
+    """Flood extent for a region and window, optionally against a baseline.
+
+    Either sensor, one evidence shape. Sentinel-1 and Sentinel-2 differ in
+    how they find water and in what they cannot see; after detection they go
+    through exactly the same arithmetic, so two results for the same place and
+    window differ only by sensor. That is the property a SAR-versus-optical
+    comparison needs, and why the two are not separate functions.
+
+    Returns a dict matching the analysis response contract.
+    """
+    _initialize()
+
+    if force_sensor is not None and force_sensor not in SENSORS:
+        raise ValueError(
+            f"Unknown sensor {force_sensor!r}. Use one of {', '.join(SENSORS)}, "
+            "or leave it empty to let cloud cover decide."
+        )
+
+    if method not in METHODS:
+        raise ValueError(
+            f"Unknown method {method!r}. Use one of {', '.join(METHODS)}."
+        )
+    if method == "change":
+        if force_sensor != "sentinel-1":
+            raise ValueError(
+                "Change detection is a radar method: it compares backscatter "
+                "against a dry baseline. Set sensor to 'sentinel-1'."
+            )
+        if not (pre_start and pre_end):
+            raise ValueError(
+                "Change detection needs a pre-event baseline window "
+                "(pre_start and pre_end) to compare against."
+            )
+
+    region = region_geometry
+    region_area = region.area(maxError=100).getInfo() / 1_000_000
+
+    sensor, reason, cloud, optical_scenes = choose_sensor(
+        region, post_start, post_end, force_sensor
+    )
+
+    if sensor == "sentinel-2":
+        try:
+            detection = _detect_optical(region, post_start, post_end, cloud_limit)
+        except surface.NoOpticalImagery:
+            if force_sensor:
+                raise
+            # Routed to optical on scene-level cloud statistics, then found no
+            # scene clear enough to composite. Radar sees through cloud; use it,
+            # and record that this is why.
+            sensor, reason = "sentinel-1", "no_cloud_free_optical_scenes"
+            detection = _detect_sar(region, post_start, post_end, scale)
+    else:
+        detection = _detect_sar(region, post_start, post_end, scale,
+                                method=method, pre_start=pre_start, pre_end=pre_end)
+
+    builder = EvidenceBuilder()
+    permanent = permanent_water_mask(region)
+
+    valid = detection["valid"]
+    observable_area = area_km2(valid, region, scale)
 
     observation = Observation(
         sensor_used=sensor,
@@ -219,30 +417,30 @@ def analyse_flood(
         sensors_considered=["sentinel-2", "sentinel-1"],
         observable_area_km2=round(observable_area, 1),
         region_area_km2=region_area,
-        scenes_available=post_info["scene_count"],
-        scenes_used=post_info["scene_count"],
+        scenes_available=detection["scenes_available"],
+        scenes_used=detection["scene_count"],
         cloud_fraction=round(cloud, 3) if cloud is not None else None,
+        relative_orbit=detection["internal"].get("orbit"),
     )
 
-    flood_mask = post_mask.And(permanent.Not()).rename("flood_mask")
+    flood_mask = detection["mask"].And(permanent.Not())
+    if detection["restrict_to_valid"]:
+        flood_mask = flood_mask.And(valid)
+    flood_mask = flood_mask.rename("flood_mask")
     flood_area = area_km2(flood_mask, region, scale)
     permanent_area = area_km2(permanent, region, scale)
 
-    validation = post_info.get("validation")
+    validation = detection["validation"]
     e_extent = builder.add(
         "flood_extent",
         round(flood_area, 1),
         "km2",
-        method=(
-            f"Sentinel-1 {post_info['polarisation']} at "
-            f"{post_info['threshold']} dB ({post_info['threshold_source']}), "
-            "permanent water excluded"
-        ),
-        threshold=post_info["threshold"],
-        threshold_unit="dB",
+        method=detection["method"],
+        threshold=detection["threshold"],
+        threshold_unit=detection["threshold_unit"],
         confidence=validation["precision"] if validation else None,
         spatial_support_km2=round(observable_area, 1),
-        source=f"{sar.S1_COLLECTION} IW {post_info['polarisation']}",
+        source=detection["source"],
     )
 
     if validation:
@@ -278,13 +476,8 @@ def analyse_flood(
         source=GSW,
     )
 
-    if post_info["threshold_source"] == "otsu_clamped":
-        builder.note(
-            f"The adaptive threshold was overruled by a physical bound "
-            f"(Otsu returned {post_info['threshold_raw']} dB, clamped to "
-            f"{post_info['threshold']} dB). This usually means the scene lacked "
-            "a clear land/water separation, so the extent is less reliable."
-        )
+    for note in detection["notes"]:
+        builder.note(note)
 
     # Where, not just how much.
     zone_result = {"zones": []}
@@ -362,40 +555,70 @@ def analyse_flood(
     baseline_mask = None
     if pre_start and pre_end:
         try:
-            # Same threshold for both windows. Letting Otsu re-fit on the dry
-            # baseline is wrong twice over: it assumes a bimodal histogram that
-            # a dry scene does not have, and any difference it produces mixes
-            # real change with threshold drift.
-            pre_mask, _, pre_info = sar.detect_water(
-                region,
-                pre_start,
-                pre_end,
-                relative_orbit=orbit,
-                scale=scale,
-                threshold_db=post_info["threshold"],
-            )
+            pre_mask, pre_valid, pre_method = detection["detect_pre"](pre_start, pre_end)
             baseline_mask = pre_mask.And(permanent.Not())
-            baseline_area = area_km2(baseline_mask, region, scale)
 
-            e_baseline = builder.add(
-                "baseline_water_extent",
-                round(baseline_area, 1),
-                "km2",
-                period_ref="pre",
-                method=(
-                    f"Sentinel-1 {pre_info['polarisation']} at the same "
-                    f"{pre_info['threshold']} dB threshold and relative orbit "
-                    "as the post-event window"
-                ),
-            )
-            builder.add(
-                "net_new_water",
-                round(flood_area - baseline_area, 1),
-                "km2",
-                derived_from=[e_extent, e_baseline],
-                method="post minus pre water extent",
-            )
-        except sar.NoSarImagery as exc:
+            if detection["baseline_common_area"]:
+                both = valid.And(pre_valid)
+                baseline_mask = baseline_mask.And(both)
+                baseline_area = area_km2(baseline_mask, region, scale)
+                common_area = area_km2(both, region, scale)
+                post_in_common = area_km2(flood_mask.And(both), region, scale)
+
+                # A separate record rather than reusing E1, because E1 is over
+                # everything the post window saw and the baseline is not. If
+                # net_new_water were E1 minus the baseline, a reader checking
+                # the arithmetic would find it does not add up - and would be
+                # right, because the two figures cover different ground.
+                e_post = builder.add(
+                    "flood_extent_in_common_area",
+                    round(post_in_common, 1),
+                    "km2",
+                    derived_from=[e_extent],
+                    spatial_support_km2=round(common_area, 1),
+                    method="flood extent restricted to ground clear in both windows",
+                )
+                e_baseline = builder.add(
+                    "baseline_water_extent",
+                    round(baseline_area, 1),
+                    "km2",
+                    period_ref="pre",
+                    method=pre_method,
+                    spatial_support_km2=round(common_area, 1),
+                    note="Measured only where both windows were cloud-free.",
+                )
+                builder.add(
+                    "net_new_water",
+                    round(post_in_common - baseline_area, 1),
+                    "km2",
+                    derived_from=[e_post, e_baseline],
+                    method="post minus pre water extent, over ground clear in both windows",
+                )
+                if observable_area and common_area < observable_area * 0.9:
+                    builder.note(
+                        f"The before-and-after comparison covers "
+                        f"{common_area:.1f} km2, the ground clear of cloud in "
+                        f"both windows, against {observable_area:.1f} km2 seen "
+                        "after the event. Change outside it is not measured."
+                    )
+            else:
+                baseline_area = area_km2(baseline_mask, region, scale)
+                e_baseline = builder.add(
+                    "baseline_water_extent",
+                    round(baseline_area, 1),
+                    "km2",
+                    period_ref="pre",
+                    method=pre_method,
+                )
+                builder.add(
+                    "net_new_water",
+                    round(flood_area - baseline_area, 1),
+                    "km2",
+                    derived_from=[e_extent, e_baseline],
+                    method="post minus pre water extent",
+                )
+        except detection["no_pre_imagery"] as exc:
+            baseline_mask = None
             builder.note(f"Baseline could not be computed: {exc}")
 
     warning = coverage_warning(observation)
@@ -429,12 +652,12 @@ def analyse_flood(
             "flood_extent",
             is_change=bool(pre_start),
             zone_count=len(flood_zones),
-            reliability="moderate",
+            reliability=detection["reliability"],
         ),
         "provenance": build_provenance(
             PIPELINE_VERSION,
             datasets=[
-                {"id": sar.S1_COLLECTION, "role": "primary imagery"},
+                {"id": detection["dataset"], "role": "primary imagery"},
                 {"id": GSW, "role": "permanent water mask"},
                 {
                     "id": region_meta.get("boundary_source", "unknown"),
@@ -442,7 +665,7 @@ def analyse_flood(
                 },
             ],
             stats_scale_m=scale,
-            known_confusions=sar.KNOWN_CONFUSIONS
+            known_confusions=detection["known_confusions"]
             + [
                 "Boundary vintage is 2015; districts created after that date are "
                 "not resolvable."
@@ -450,15 +673,14 @@ def analyse_flood(
         ),
         "_internal": {
             "flood_mask": flood_mask,
-            # The pre-event water mask, at the SAME threshold and relative
-            # orbit. Kept so the frontend can draw a before/after swipe: any
-            # difference the user sees is water, not threshold drift or a
-            # change of viewing geometry. None in single-window mode, and None
-            # when the baseline window had no imagery.
+            # The pre-event water mask, at the SAME threshold (and for SAR the
+            # same relative orbit). Kept so the frontend can draw a
+            # before/after swipe: any difference the user sees is water, not
+            # threshold drift or a change of viewing geometry. None in
+            # single-window mode, and None when the baseline had no imagery.
             "baseline_mask": baseline_mask,
-            "composite": post_composite,
             "region": region,
-            "orbit": orbit,
+            **detection["internal"],
         },
     }
 
@@ -508,6 +730,15 @@ def tile_urls(payload):
         if composite is not None:
             urls["backscatter_tiles"] = tiles(
                 composite.visualize(min=-25, max=0, palette=["000000", "ffffff"])
+            )
+
+        # Optical results have no backscatter; a dB stretch on reflectance
+        # would draw a white rectangle. Show what the camera saw instead, which
+        # also shows the reader where the cloud was.
+        true_colour = internal.get("true_colour")
+        if true_colour is not None:
+            urls["true_colour_tiles"] = tiles(
+                true_colour.visualize(bands=["B4", "B3", "B2"], min=0, max=3000)
             )
 
         return urls

@@ -54,6 +54,11 @@ class Observation:
     cloud_fraction: float | None = None
     sensor_reason: str | None = None
     sensors_considered: list[str] = field(default_factory=list)
+    # Sentinel-1 only. Recorded because two SAR results are comparable only
+    # from the same relative orbit - from another, part of any difference is
+    # viewing geometry. A time series needs this to say which months it can
+    # honestly put side by side. None (and so omitted) for optical.
+    relative_orbit: int | None = None
 
     @property
     def coverage_fraction(self):

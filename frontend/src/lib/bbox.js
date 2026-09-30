@@ -204,6 +204,16 @@ export function describeFootprint(region) {
     return `${shape.radius_km} km around ${lat.toFixed(2)} N, ${lng.toFixed(2)} E`
   }
 
+  // A polygon carries a bbox too, so without this branch it would fall through
+  // below and be labelled by its bounding box - describing an outline by the
+  // rectangle around it, which is not the area that was measured.
+  if (shape.kind === 'polygon' && Array.isArray(shape.bbox)) {
+    const [west, south, east, north] = shape.bbox
+    const lat = ((south + north) / 2).toFixed(2)
+    const lng = ((west + east) / 2).toFixed(2)
+    return `${shape.points}-point outline at ${lat} N, ${lng} E`
+  }
+
   const box = shape.bbox
   if (Array.isArray(box) && box.length === 4) {
     const [west, south, east, north] = box

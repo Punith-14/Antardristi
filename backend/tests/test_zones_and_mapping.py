@@ -149,6 +149,26 @@ def test_confidence_drives_how_boldly_a_result_is_drawn(reliability, style):
     ] == style
 
 
+@pytest.mark.parametrize("reliability", ["unvalidated", None, "", "something-new"])
+def test_solid_is_earned_not_defaulted_to(reliability):
+    """This was `else: "solid"`, so an unscored method - or a missing
+    reliability altogether - was drawn more boldly than the SAR rule measured
+    on 441 chips. Anything not known to be good is not drawn as good."""
+    hints = display_hints("flood_extent", zone_count=5, reliability=reliability)
+    assert hints["overlay_style"] != "solid"
+    assert "warning_banner" in hints
+
+
+def test_unvalidated_is_not_called_unreliable():
+    """Nobody measured it, so nobody knows. Saying it is unreliable would be
+    as unsupported as saying it is good."""
+    banner = display_hints("crop_stress", zone_count=0, reliability="unvalidated")[
+        "warning_banner"
+    ]
+    assert "not been validated" in banner
+    assert "unreliable" not in banner
+
+
 def test_poor_reliability_raises_a_banner():
     hints = display_hints("built_up", zone_count=0, reliability="poor")
     assert "warning_banner" in hints

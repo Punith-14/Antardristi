@@ -1,13 +1,28 @@
 import { circleToRequest, toRequest } from './lib/bbox'
+import { polygonToRequest } from './lib/polygon'
+import { pdfPath } from './lib/exportlink'
 
 const BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
 
-/** A drawn shape as the API wants it: one of bbox, or point + radius_km. */
+/**
+ * A drawn shape as the API wants it: one of bbox, point + radius_km, or
+ * polygon.
+ *
+ * Exactly one key comes back. footprint.build refuses a request carrying two
+ * shapes rather than picking one, because a caller that sent both could not
+ * tell which was measured - so this must never merge them.
+ */
 export function areaToRequest(area) {
   if (!area) return {}
-  return area.kind === 'circle'
-    ? circleToRequest(area.centre, area.radiusKm)
-    : toRequest(area.bbox)
+  if (area.kind === 'circle') return circleToRequest(area.centre, area.radiusKm)
+  if (area.kind === 'polygon') return polygonToRequest(area.points)
+  return toRequest(area.bbox)
+}
+
+/** Where the PDF of a stored analysis can be downloaded, or null. */
+export function pdfUrl(result) {
+  const path = pdfPath(result)
+  return path ? `${BASE}${path}` : null
 }
 
 async function request(path, options = {}) {
@@ -61,6 +76,13 @@ export const api = {
 
   zones: (requestId) => request(`/analyze/${requestId}/zones.geojson`),
 
+  /** One stored analysis by id - used to open a single month of a series. */
+  analysis: (requestId) => request(`/analyze/${encodeURIComponent(requestId)}`),
+
+  /** Flood extent month by month. Each month is a full cached analysis. */
+  series: (payload) =>
+    request('/analyze/series', { method: 'POST', body: JSON.stringify(payload) }),
+
   cacheStats: () => request('/cache'),
 }
 
@@ -91,6 +113,23 @@ export function runAnalysis({
     return api.flood({ ...common, sensor: 'sentinel-1' })
   }
   return api.surface({ ...common, analysis_type: analysisType })
+}
+
+/**
+ * A monthly flood series over the form's From..To range.
+ *
+ * The sensor is always named. The backend refuses to let cloud cover choose
+ * it month by month, because a jump between a radar month and an optical
+ * month would be the instrument changing.
+ */
+export function runSeries({ region, area, postStart, postEnd, scale }) {
+  return api.series({
+    ...(area ? areaToRequest(area) : { region }),
+    start: postStart,
+    end: postEnd,
+    sensor: 'sentinel-1',
+    scale: scale || 200,
+  })
 }
 
 export const RELIABILITY = {

@@ -1,0 +1,371 @@
+{
+ "single": {
+  "evidence": [
+   {
+    "confidence": 0.768,
+    "id": "E1",
+    "method": "Sentinel-1 VV+VH at -20.0 dB (fixed_validated), permanent water excluded",
+    "quantity": "flood_extent",
+    "source": "COPERNICUS/S1_GRD IW VV+VH",
+    "spatial_support_km2": 360.0,
+    "threshold": -20.0,
+    "threshold_unit": "dB",
+    "unit": "km2",
+    "value": 64.0
+   },
+   {
+    "denominator": "observable_area_km2",
+    "derived_from": [
+     "E1"
+    ],
+    "id": "E2",
+    "note": "Percentage is of observable area, not total region area.",
+    "quantity": "flood_extent_fraction",
+    "unit": "percent",
+    "value": 17.78
+   },
+   {
+    "id": "E3",
+    "method": "JRC/GSW1_4/GlobalSurfaceWater occurrence >= 90, excluded from flood extent",
+    "quantity": "permanent_water_area",
+    "source": "JRC/GSW1_4/GlobalSurfaceWater",
+    "unit": "km2",
+    "value": 9.0
+   },
+   {
+    "derived_from": [
+     "E1"
+    ],
+    "id": "E4",
+    "method": "Connected flooded regions vectorised at 100 m; regions below 0.5 km2 excluded as noise",
+    "quantity": "zone_count",
+    "unit": "zones",
+    "value": 1
+   },
+   {
+    "derived_from": [
+     "E4"
+    ],
+    "id": "E5",
+    "note": "Centred near 10.05 N, 76.05 E",
+    "quantity": "largest_zone_area",
+    "unit": "km2",
+    "value": 64.0
+   },
+   {
+    "derived_from": [
+     "E1",
+     "E4"
+    ],
+    "id": "E6",
+    "note": "Remainder is scattered pixels below the minimum zone size, which may indicate dispersed wet ground rather than contiguous flooding.",
+    "quantity": "zoned_fraction",
+    "unit": "percent",
+    "value": 100.0
+   }
+  ],
+  "map": {
+   "basemap": "openstreetmap",
+   "fit_bounds_to": "zones",
+   "overlay_style": "translucent",
+   "palette": [
+    "#00b7ff"
+   ],
+   "primary_layer": "zone_polygons",
+   "reason": "The subject is a set of distinct areas, so outlines carry the meaning.",
+   "secondary_layer": "raster_overlay",
+   "show_zone_labels": true
+  },
+  "observation": {
+   "coverage_fraction": 0.9,
+   "observable_area_km2": 360.0,
+   "scenes_available": 3,
+   "scenes_rejected_by_cloud_filter": 0,
+   "scenes_used": 3,
+   "sensor_reason": "forced_by_request:sentinel-1",
+   "sensor_used": "sentinel-1",
+   "sensors_considered": [
+    "sentinel-2",
+    "sentinel-1"
+   ]
+  },
+  "period": {
+   "mode": "single",
+   "post": {
+    "end": "2018-08-31",
+    "start": "2018-08-01"
+   }
+  },
+  "provenance": {
+   "datasets": [
+    {
+     "id": "COPERNICUS/S1_GRD",
+     "role": "primary imagery"
+    },
+    {
+     "id": "JRC/GSW1_4/GlobalSurfaceWater",
+     "role": "permanent water mask"
+    },
+    {
+     "id": "FAO/GAUL/2015/level1",
+     "role": "administrative boundary"
+    }
+   ],
+   "known_confusions": [
+    "Radar shadow behind terrain and tall buildings is dark and can read as water.",
+    "Smooth dry surfaces such as tarmac, sand flats and bare hardpan can read as water.",
+    "Flooded vegetation may NOT be detected: the canopy bounces the pulse off the trunks and back to the sensor, so water beneath trees or tall crops reads as bright rather than dark. Measured at 7.7% of all undetected water.",
+    "Wind roughens open water and raises backscatter, which can cause flooding to be underestimated during a storm.",
+    "Recall is 0.574: roughly two fifths of labelled water is still missed. Most of it is brighter than any defensible water threshold - mixed pixels, turbid or shallow water - and is a limit of single-date thresholding rather than of this particular threshold.",
+    "Boundary vintage is 2015; districts created after that date are not resolvable."
+   ],
+   "models": [],
+   "pipeline_version": "0.5.0",
+   "stats_scale_m": 100
+  },
+  "region": {
+   "admin_level": "state",
+   "boundary_source": "FAO/GAUL/2015/level1",
+   "boundary_vintage": "2015",
+   "name": "Testland",
+   "slug": "testland",
+   "state": "Testland"
+  },
+  "schema_version": "1.0",
+  "unobserved": {
+   "masked_area_km2": 40.0,
+   "notes": [
+    "This detection method scores IoU 0.489, precision 0.768 and recall 0.574 on Sen1Floods11 HandLabeled (441 chips, VV+VH mean). About 23% of detected pixels are expected to be false positives, and about 43% of true flooding is expected to be missed."
+   ],
+   "reason": null,
+   "region_area_km2": 400.0
+  },
+  "zones": [
+   {
+    "area_km2": 64.0,
+    "bbox": [
+     76.0,
+     10.0,
+     76.1,
+     10.1
+    ],
+    "centroid": [
+     76.05,
+     10.05
+    ],
+    "id": "Z1",
+    "rank": 1,
+    "severity": "moderate"
+   }
+  ],
+  "zones_geojson": {
+   "features": [],
+   "type": "FeatureCollection"
+  },
+  "zones_summary": {
+   "count": 1,
+   "high_severity_count": 0,
+   "largest_area_km2": 64.0,
+   "listed": 1,
+   "listed_area_km2": 64.0,
+   "total_area_km2": 64.0,
+   "truncated": false
+  }
+ },
+ "with_baseline": {
+  "evidence": [
+   {
+    "confidence": 0.768,
+    "id": "E1",
+    "method": "Sentinel-1 VV+VH at -20.0 dB (fixed_validated), permanent water excluded",
+    "quantity": "flood_extent",
+    "source": "COPERNICUS/S1_GRD IW VV+VH",
+    "spatial_support_km2": 360.0,
+    "threshold": -20.0,
+    "threshold_unit": "dB",
+    "unit": "km2",
+    "value": 64.0
+   },
+   {
+    "denominator": "observable_area_km2",
+    "derived_from": [
+     "E1"
+    ],
+    "id": "E2",
+    "note": "Percentage is of observable area, not total region area.",
+    "quantity": "flood_extent_fraction",
+    "unit": "percent",
+    "value": 17.78
+   },
+   {
+    "id": "E3",
+    "method": "JRC/GSW1_4/GlobalSurfaceWater occurrence >= 90, excluded from flood extent",
+    "quantity": "permanent_water_area",
+    "source": "JRC/GSW1_4/GlobalSurfaceWater",
+    "unit": "km2",
+    "value": 9.0
+   },
+   {
+    "derived_from": [
+     "E1"
+    ],
+    "id": "E4",
+    "method": "Connected flooded regions vectorised at 100 m; regions below 0.5 km2 excluded as noise",
+    "quantity": "zone_count",
+    "unit": "zones",
+    "value": 1
+   },
+   {
+    "derived_from": [
+     "E4"
+    ],
+    "id": "E5",
+    "note": "Centred near 10.05 N, 76.05 E",
+    "quantity": "largest_zone_area",
+    "unit": "km2",
+    "value": 64.0
+   },
+   {
+    "derived_from": [
+     "E1",
+     "E4"
+    ],
+    "id": "E6",
+    "note": "Remainder is scattered pixels below the minimum zone size, which may indicate dispersed wet ground rather than contiguous flooding.",
+    "quantity": "zoned_fraction",
+    "unit": "percent",
+    "value": 100.0
+   },
+   {
+    "id": "E7",
+    "method": "Sentinel-1 VV+VH at the same -20.0 dB threshold and relative orbit as the post-event window",
+    "period_ref": "pre",
+    "quantity": "baseline_water_extent",
+    "unit": "km2",
+    "value": 16.0
+   },
+   {
+    "derived_from": [
+     "E1",
+     "E7"
+    ],
+    "id": "E8",
+    "method": "post minus pre water extent",
+    "quantity": "net_new_water",
+    "unit": "km2",
+    "value": 48.0
+   }
+  ],
+  "map": {
+   "basemap": "openstreetmap",
+   "fit_bounds_to": "zones",
+   "overlay_style": "translucent",
+   "palette": [
+    "#00b7ff"
+   ],
+   "primary_layer": "zone_polygons",
+   "reason": "Change appears in distinct patches, so outlines carry the meaning.",
+   "secondary_layer": "raster_overlay",
+   "show_zone_labels": true
+  },
+  "observation": {
+   "coverage_fraction": 0.9,
+   "observable_area_km2": 360.0,
+   "scenes_available": 3,
+   "scenes_rejected_by_cloud_filter": 0,
+   "scenes_used": 3,
+   "sensor_reason": "forced_by_request:sentinel-1",
+   "sensor_used": "sentinel-1",
+   "sensors_considered": [
+    "sentinel-2",
+    "sentinel-1"
+   ]
+  },
+  "period": {
+   "mode": "comparison",
+   "post": {
+    "end": "2018-08-31",
+    "start": "2018-08-01"
+   },
+   "pre": {
+    "end": "2018-05-31",
+    "start": "2018-05-01"
+   }
+  },
+  "provenance": {
+   "datasets": [
+    {
+     "id": "COPERNICUS/S1_GRD",
+     "role": "primary imagery"
+    },
+    {
+     "id": "JRC/GSW1_4/GlobalSurfaceWater",
+     "role": "permanent water mask"
+    },
+    {
+     "id": "FAO/GAUL/2015/level1",
+     "role": "administrative boundary"
+    }
+   ],
+   "known_confusions": [
+    "Radar shadow behind terrain and tall buildings is dark and can read as water.",
+    "Smooth dry surfaces such as tarmac, sand flats and bare hardpan can read as water.",
+    "Flooded vegetation may NOT be detected: the canopy bounces the pulse off the trunks and back to the sensor, so water beneath trees or tall crops reads as bright rather than dark. Measured at 7.7% of all undetected water.",
+    "Wind roughens open water and raises backscatter, which can cause flooding to be underestimated during a storm.",
+    "Recall is 0.574: roughly two fifths of labelled water is still missed. Most of it is brighter than any defensible water threshold - mixed pixels, turbid or shallow water - and is a limit of single-date thresholding rather than of this particular threshold.",
+    "Boundary vintage is 2015; districts created after that date are not resolvable."
+   ],
+   "models": [],
+   "pipeline_version": "0.5.0",
+   "stats_scale_m": 100
+  },
+  "region": {
+   "admin_level": "state",
+   "boundary_source": "FAO/GAUL/2015/level1",
+   "boundary_vintage": "2015",
+   "name": "Testland",
+   "slug": "testland",
+   "state": "Testland"
+  },
+  "schema_version": "1.0",
+  "unobserved": {
+   "masked_area_km2": 40.0,
+   "notes": [
+    "This detection method scores IoU 0.489, precision 0.768 and recall 0.574 on Sen1Floods11 HandLabeled (441 chips, VV+VH mean). About 23% of detected pixels are expected to be false positives, and about 43% of true flooding is expected to be missed."
+   ],
+   "reason": null,
+   "region_area_km2": 400.0
+  },
+  "zones": [
+   {
+    "area_km2": 64.0,
+    "bbox": [
+     76.0,
+     10.0,
+     76.1,
+     10.1
+    ],
+    "centroid": [
+     76.05,
+     10.05
+    ],
+    "id": "Z1",
+    "rank": 1,
+    "severity": "moderate"
+   }
+  ],
+  "zones_geojson": {
+   "features": [],
+   "type": "FeatureCollection"
+  },
+  "zones_summary": {
+   "count": 1,
+   "high_severity_count": 0,
+   "largest_area_km2": 64.0,
+   "listed": 1,
+   "listed_area_km2": 64.0,
+   "total_area_km2": 64.0,
+   "truncated": false
+  }
+ }
+}

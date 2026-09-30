@@ -216,6 +216,109 @@ def test_the_frontend_and_backend_limits_agree():
     assert f"[{west}, {south}, {east}, {north}]" in js
 
 
+def test_a_bowtie_is_refused_by_the_backend_not_just_the_browser():
+    """The one invalid polygon that returns a number instead of an error.
+
+    Earth Engine reduces over a self-intersecting ring without complaint. The
+    two lobes wind opposite ways and partly cancel, so the area is of nothing
+    anyone drew - a plausible figure for a shape that does not exist, which is
+    the failure mode this whole project is built against.
+    """
+    with pytest.raises(footprint.InvalidFootprint) as raised:
+        footprint.from_polygon([[76.3, 9.4], [76.6, 9.4], [76.3, 9.7], [76.6, 9.7]])
+
+    assert "crosses itself" in str(raised.value)
+
+
+def test_a_concave_outline_is_not_mistaken_for_a_crossing():
+    """Refusing concave shapes would rule out most catchments and coastlines -
+    the areas a drawing tool exists for."""
+    ell = [
+        [76.0, 9.5], [77.0, 9.5], [77.0, 10.0],
+        [76.5, 10.0], [76.5, 10.5], [76.0, 10.5],
+    ]
+    shape = footprint.from_polygon(ell)
+    assert shape["points"] == 6
+
+
+def test_a_triangle_can_never_be_a_bowtie():
+    footprint.from_polygon([[76.3, 9.4], [76.6, 9.4], [76.6, 9.7]])
+
+
+def test_closing_the_ring_is_not_itself_a_crossing():
+    """The first and last points of a closed ring are the same point. Counting
+    that as an intersection would refuse every valid polygon."""
+    closed = [[76.3, 9.4], [76.6, 9.4], [76.6, 9.7], [76.3, 9.7], [76.3, 9.4]]
+    assert footprint.from_polygon(closed)["points"] == 4
+
+
+def test_both_sides_refuse_the_same_bowtie():
+    """The browser check and the backend check must agree, or a shape is
+    refused in one place with one explanation and accepted in the other."""
+    js = (paths.PROJECT_ROOT / "frontend" / "src" / "lib" / "polygon.js").read_text(
+        encoding="utf-8"
+    )
+    assert "selfIntersects" in js
+    assert "crosses itself" in js
+
+
+def test_the_polygon_limits_agree_too():
+    """Same argument as the bbox limits above, one shape further on.
+
+    lib/polygon.js refuses a ring before it is sent so the user hears why
+    while still looking at the shape. If its point cap drifts from this one,
+    the browser accepts an outline the API then rejects - and the message
+    arrives after the shape has already been drawn.
+    """
+    js = (paths.PROJECT_ROOT / "frontend" / "src" / "lib" / "polygon.js").read_text(
+        encoding="utf-8"
+    )
+    assert f"MAX_POLYGON_POINTS = {footprint.MAX_POLYGON_POINTS}" in js
+    # Three is the minimum on both sides; the backend states it in prose
+    # rather than a constant, so the check is on the behaviour.
+    assert "MIN_POLYGON_POINTS = 3" in js
+
+
+def test_the_browser_refuses_the_rings_the_backend_would():
+    """Every ring rejected here should already have been rejected in the
+    browser. Checked by shape of rule rather than by running JS: the point
+    cap, the three-point floor and the India bounds are the three the
+    frontend duplicates, and each has a matching refusal there."""
+    with pytest.raises(footprint.InvalidFootprint):
+        footprint.from_polygon([[76.3, 9.4], [76.6, 9.7]])          # too few
+
+    with pytest.raises(footprint.InvalidFootprint):
+        footprint.from_polygon([[10.0, 50.0], [10.1, 50.0], [10.1, 50.1]])  # Europe
+
+    js = (paths.PROJECT_ROOT / "frontend" / "src" / "lib" / "polygon.js").read_text(
+        encoding="utf-8"
+    )
+    assert "at least ${MIN_POLYGON_POINTS} points" in js
+    assert "must be over India" in js
+
+
+def test_a_polygon_reports_its_own_point_count_not_the_closed_ring_length():
+    """from_polygon closes the ring, so the stored ring is one longer than
+    what the user drew. Reporting that length would tell someone who placed
+    seven corners that they placed eight."""
+    drawn = [[76.3, 9.4], [76.6, 9.4], [76.6, 9.7], [76.3, 9.7]]
+    shape = footprint.from_polygon(drawn)
+
+    assert shape["points"] == len(drawn)
+    assert len(shape["ring"]) == len(drawn) + 1
+    assert shape["ring"][0] == shape["ring"][-1]
+
+
+def test_a_polygon_that_is_already_closed_is_not_closed_twice():
+    """A caller that closes its own ring must not end up with a duplicated
+    point, which would inflate the count and add a zero-length edge."""
+    drawn = [[76.3, 9.4], [76.6, 9.4], [76.6, 9.7], [76.3, 9.4]]
+    shape = footprint.from_polygon(drawn)
+
+    assert len(shape["ring"]) == len(drawn)
+    assert shape["points"] == len(drawn) - 1
+
+
 def test_geometry_starts_earth_engine_itself(monkeypatch):
     """The 500 that prompted earth_engine.py.
 
@@ -270,8 +373,15 @@ def test_initialisation_lives_in_exactly_one_place():
 MAIN = (BACKEND / "main.py").read_text(encoding="utf-8")
 
 
-def _block(header, length=1400):
-    return MAIN.split(header)[1][:length]
+def _block(header, length=None):
+    """Everything from a header to the next @app decorator.
+
+    Was a fixed character count, which silently truncated - and a truncated
+    slice makes an assertion pass or fail for reasons unrelated to what it
+    is checking."""
+    after = MAIN.split(header)[1]
+    end = after.find("@app.")
+    return after if end == -1 else after[:end]
 
 
 def test_ask_accepts_a_drawn_area():

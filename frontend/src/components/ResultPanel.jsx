@@ -1,4 +1,7 @@
-import { citationSegments } from '../api'
+import { useMemo, useState } from 'react'
+
+import { citationSegments, pdfUrl } from '../api'
+import { SORTS, nextSort, sortZones } from '../lib/zonesort'
 
 const fmt = (value, unit) => {
   if (value == null) return '—'
@@ -123,8 +126,28 @@ function Evidence({ evidence, highlighted }) {
   )
 }
 
+/**
+ * The zone list, sortable by rank, area, severity or latitude.
+ *
+ * Sorting only reorders what the backend already sent. When the list is
+ * truncated - 89 zones found, 20 listed - sorting by area ascending shows
+ * the smallest of the twenty largest, not the smallest of the eighty-nine.
+ * The caption says so, because a sorted list looks complete whether it is
+ * or not.
+ */
 function Zones({ zones, summary, selected, onSelect }) {
+  const [sort, setSort] = useState({ key: 'rank', direction: 'asc' })
+
+  // useMemo, not a sort in the render body: the zone list can run to
+  // hundreds and this re-renders on every hover of the map.
+  const ordered = useMemo(
+    () => sortZones(zones, sort.key, sort.direction),
+    [zones, sort.key, sort.direction],
+  )
+
   if (!zones?.length) return null
+
+  const arrow = sort.direction === 'asc' ? '▲' : '▼'
 
   return (
     <section className="zones">
@@ -136,8 +159,31 @@ function Zones({ zones, summary, selected, onSelect }) {
           </small>
         )}
       </h3>
+
+      <div className="zone-sort" role="group" aria-label="Sort zones">
+        {SORTS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            className={`sort-key ${sort.key === key ? 'active' : ''}`}
+            aria-pressed={sort.key === key}
+            onClick={() => setSort((current) => nextSort(current, key))}
+          >
+            {label}
+            {sort.key === key && <span className="sort-arrow">{arrow}</span>}
+          </button>
+        ))}
+      </div>
+
+      {summary?.truncated && sort.key === 'area' && sort.direction === 'asc' && (
+        <p className="zone-caveat">
+          Smallest of the {summary.listed} listed, not of the {summary.count}{' '}
+          found.
+        </p>
+      )}
+
       <div className="zone-list">
-        {zones.map((zone) => (
+        {ordered.map((zone) => (
           <button
             key={zone.id}
             className={`zone ${selected === zone.id ? 'active' : ''} sev-${zone.severity}`}
@@ -169,6 +215,7 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
   }
 
   const noData = result.unobserved?.reason === 'no_usable_imagery'
+  const pdf = pdfUrl(result)
 
   return (
     <div className="panel result-panel">
@@ -180,6 +227,20 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
           {result.period?.post?.start} to {result.period?.post?.end}
           {result.period?.pre && ` · baseline ${result.period.pre.start}`}
         </p>
+        {pdf && (
+          // A plain link rather than a fetch. The server's
+          // Content-Disposition: attachment is what makes it download and
+          // names the file; the `download` attribute alone would be ignored,
+          // because the API is on a different origin from this page.
+          <a
+            className="pdf-link"
+            href={pdf}
+            download
+            title="Finding, evidence record, caveats and provenance on paper"
+          >
+            Download PDF
+          </a>
+        )}
       </div>
 
       {noData ? (

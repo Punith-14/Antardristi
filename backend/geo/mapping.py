@@ -62,15 +62,28 @@ def display_hints(analysis_type, is_change=False, zone_count=0, reliability=None
     }
 
     # An unreliable result must not be drawn as confidently as a good one.
-    if reliability == "poor":
+    #
+    # Solid is earned, not defaulted to. This used to be `else: "solid"`, so
+    # "unvalidated" - and a missing reliability altogether - got the most
+    # confident styling in the system: an unscored crop-stress threshold was
+    # drawn more boldly than the SAR flood rule measured on 441 chips.
+    if reliability == "good":
+        hints["overlay_style"] = "solid"
+    elif reliability == "moderate":
+        hints["overlay_style"] = "translucent"
+    elif reliability == "poor":
         hints["overlay_style"] = "hatched"
         hints["warning_banner"] = (
             "This detection method is unreliable. The overlay is indicative "
             "only and should not be used for decisions."
         )
-    elif reliability == "moderate":
-        hints["overlay_style"] = "translucent"
     else:
-        hints["overlay_style"] = "solid"
+        # Unvalidated is not the same as poor - nobody has measured it, so
+        # nobody knows - but it is not good either.
+        hints["overlay_style"] = "hatched"
+        hints["warning_banner"] = (
+            "This detection method has not been validated, so how far to trust "
+            "the overlay is unknown."
+        )
 
     return hints

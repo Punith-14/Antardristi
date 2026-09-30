@@ -58,7 +58,10 @@ DEFAULT_DB = -20.0
 # mistuned threshold, it is a different physical population: mixed pixels,
 # turbid water, wind-roughened surfaces. Only 7.7% carries the double-bounce
 # signature of flooded vegetation. No darkness threshold in any polarisation
-# reaches the rest; change detection against a dry baseline would.
+# reaches the rest. Change detection was expected to, and notebook 06 showed it
+# does not: its gain is near-threshold water, and it recovers none of the water
+# above -10 dB (see CHANGE_* below). Those percentages are in VV terms; on the
+# fused band only about 2% of missed water is that bright.
 RECALL_CEILING_NOTE = (
     "Recall is bounded by what single-date backscatter thresholding can do. "
     "28.3% of undetected water is brighter than -10 dB, too bright for any "
@@ -95,6 +98,127 @@ VV_ONLY_VALIDATION = {
 WATER_DB_MIN = -31.0
 WATER_DB_MAX = -17.0
 FALLBACK_DB = DEFAULT_DB
+
+
+# Change detection: darker than its own dry self, not just dark.
+#
+# The RECALL_CEILING_NOTE above names the gap and the mechanism that would
+# reach it. This is that mechanism. The rule, on the same fused band:
+#
+#     water = post < CHANGE_DARK_DB
+#             OR (post - pre < CHANGE_DROP_DB AND post < CHANGE_CEILING_DB)
+#
+# where `pre` is the MEDIAN of a dry pre-event window from the same relative
+# orbit - the median, not the minimum used for the post window, because the
+# baseline has to describe the pixel's typical dry state. A minimum would
+# latch onto any transient wetness in the baseline and hide the change.
+#
+# Measured by notebook 06 on 428 Sen1Floods11 chips, against a baseline fetched
+# for each by scripts/fetch_pre_event.py (60 days ending 15 days before the
+# flood image, same relative orbit). On those chips:
+#
+#                                    IoU    precision   recall
+#     darkness only, -20 dB         0.485     0.752      0.577   <- default
+#     change, drop -3 / ceiling -15 0.466     0.601      0.674   <- first guess
+#     change, drop -5 / ceiling -16 0.505     0.728      0.622   <- ships (opt-in)
+#
+# The first guess FAILED: it bought recall with more precision than it was
+# worth, calling 2.5M dry pixels water to recover 0.94M wet ones. Requiring a
+# 5 dB drop fixed that. The gain is small but not a spike - every drop of 5 or
+# 6 dB scored 0.501-0.505 whatever the ceiling.
+#
+# What it recovers, at these settings, is mostly near-threshold water: 23.7% of
+# the marginal misses, 2.0% of the moderate ones - 439k wet pixels found for
+# 410k dry ones wrongly added, close to one for one, which is why the IoU gain
+# is real but thin. (The 40% / 12% recovered by the -3 dB first guess came
+# with 2.5M false positives.) It recovers NONE of the water brighter than
+# -10 dB: the ceiling excludes it by construction. That population, 28.3% of misses in
+# notebook 04's VV terms, is only about 2% of misses on the fused band this
+# rule uses - most of the missed water is moderately dark, not bright, and
+# still out of reach of single-date radar.
+#
+# Opt-in, not the default: +0.02 IoU does not justify requiring a baseline
+# window on every request. evaluation/change.py mirrors these constants and a
+# test holds the two equal.
+CHANGE_DARK_DB = DEFAULT_DB
+CHANGE_DROP_DB = -5.0
+CHANGE_CEILING_DB = -16.0
+CHANGE_VALIDATION = {
+    "dataset": "Sen1Floods11 HandLabeled (428 chips with a fetched pre-event baseline)",
+    "iou": 0.505,
+    "precision": 0.728,
+    "recall": 0.622,
+}
+
+# Why 0.505 needs reading carefully. One sentence, because every note has to
+# survive into the generated report.
+CHANGE_VALIDATION_CAVEAT = (
+    "Change detection was tuned and scored on the same chips, its baselines were "
+    "fetched rather than supplied with the dataset, and a baseline window that "
+    "was already wet makes it find less new water than was there."
+)
+
+CHANGE_NOT_VALIDATED_NOTE = (
+    "Change detection (darker by more than "
+    f"{abs(CHANGE_DROP_DB):g} dB than the dry baseline, and below "
+    f"{CHANGE_CEILING_DB:g} dB) has not been scored at these settings, so no "
+    "accuracy figure is given."
+)
+
+
+class NoBaselineImagery(RuntimeError):
+    """Change detection was asked for, and the pre-event window has no radar.
+
+    Separate from NoSarImagery because the right response differs: with no
+    post-event imagery there is nothing to report, but with no baseline the
+    darkness rule still works - the caller should be told to use it, not
+    silently handed it.
+    """
+
+    def __init__(self, start_date, end_date, relative_orbit=None):
+        self.start_date = start_date
+        self.end_date = end_date
+        orbit = f" from relative orbit {relative_orbit}" if relative_orbit else ""
+        super().__init__(
+            f"Change detection needs a pre-event baseline, and there are no "
+            f"Sentinel-1 scenes{orbit} for {start_date} to {end_date}. Widen the "
+            "baseline window, or use method 'threshold'."
+        )
+
+
+def baseline_composite(region, start_date, end_date, relative_orbit,
+                       polarisations=POLARISATIONS, speckle_radius=50):
+    """The dry reference for change detection: fused median backscatter.
+
+    Same relative orbit as the post-event window, or the difference contains
+    viewing geometry. Same speckle filter and fusion as detect_water, so the
+    two composites differ only in time.
+    """
+    polarisations = tuple(polarisations)
+    collection = get_collection(
+        region, start_date, end_date, polarisations, relative_orbit=relative_orbit
+    )
+    if collection.size().getInfo() == 0:
+        raise NoBaselineImagery(start_date, end_date, relative_orbit)
+
+    stack = speckle_filter(collection.median().clip(region), speckle_radius)
+    return fuse(stack, polarisations)
+
+
+def change_mask(post_composite, pre_composite, dark_db=CHANGE_DARK_DB,
+                drop_db=CHANGE_DROP_DB, ceiling_db=CHANGE_CEILING_DB):
+    """Water by the change rule. Both inputs are fused dB composites.
+
+    Where the baseline has no data the darkened branch is simply absent, so
+    the pixel falls back to the darkness rule: missing history is not
+    evidence against water.
+    """
+    dark = post_composite.lt(dark_db)
+    darkened = (
+        post_composite.subtract(pre_composite).lt(drop_db)
+        .And(post_composite.lt(ceiling_db))
+    )
+    return dark.Or(darkened.unmask(0)).rename("water_mask")
 
 
 class NoSarImagery(RuntimeError):

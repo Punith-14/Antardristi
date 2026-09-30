@@ -10,6 +10,10 @@ opencv-python-headless
 pillow
 groq
 
+# PDF export (GET /analyze/{request_id}/report.pdf). Pure Python, no system
+# libraries, so it installs the same on Windows as on Linux.
+reportlab
+
 # Land cover classifier. The version is PINNED because scikit-learn pickles are
 # not portable across versions - a mismatch can load and then behave
 # differently, which is worse than failing. models/landcover_rf_v1.json records

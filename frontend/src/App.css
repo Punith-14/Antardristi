@@ -182,9 +182,13 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 /* Draw-an-area toolbar. Sits above the Leaflet panes but below its controls,
    which live at 800. */
+/* Three tools now, so it wraps rather than running off the left edge of a
+   narrow map. Right-aligned when it wraps, to stay anchored to its corner. */
 .draw-bar {
   position: absolute; top: 10px; right: 10px; z-index: 600;
   display: flex; align-items: center; gap: 7px;
+  flex-wrap: wrap; justify-content: flex-end;
+  max-width: calc(100% - 20px);
 }
 .draw-bar button {
   background: rgba(22, 27, 34, 0.94);
@@ -323,6 +327,29 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .ev-name small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
 .ev-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+.pdf-link {
+  display: inline-block; margin-top: 6px;
+  font-size: 11.5px; color: var(--accent);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 3px 9px; text-decoration: none;
+}
+.pdf-link:hover { border-color: var(--accent); }
+
+/* Sort controls. Deliberately quiet - they sit above the list, not in it. */
+.zone-sort { display: flex; gap: 4px; margin: 6px 0 8px; flex-wrap: wrap; }
+.sort-key {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: transparent; border: 1px solid var(--line);
+  color: var(--muted); font: inherit; font-size: 11.5px;
+  padding: 3px 8px; border-radius: 999px; cursor: pointer;
+}
+.sort-key:hover { color: var(--text); border-color: var(--accent); }
+.sort-key.active { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
+.sort-arrow { font-size: 8px; line-height: 1; }
+
+/* Says what the sorted list is the smallest OF, when it is truncated. */
+.zone-caveat { color: var(--moderate); font-size: 11px; margin: 0 0 7px; }
+
 .zone-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
 .zone {
   display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 9px;
@@ -357,3 +384,60 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   .layout { grid-template-columns: 1fr; grid-template-rows: auto 420px auto; }
   .column.centre { overflow: visible; }
 }
+
+/* ---------------------------------------------------------- monthly series */
+
+.series-run { margin-top: 8px; }
+.series-run button {
+  width: 100%; background: transparent; color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+  font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.series-run button:hover:not(:disabled) { border-color: var(--accent); }
+.series-run small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+.back-to-series {
+  display: block; width: 100%; margin-bottom: 8px; text-align: left;
+  background: var(--panel); color: var(--accent); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 7px 11px; font: inherit; font-size: 12px; cursor: pointer;
+}
+
+.series-toggle { display: flex; gap: 4px; margin: 4px 0 8px; }
+.series-toggle button {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 999px; padding: 3px 9px; font: inherit; font-size: 11.5px; cursor: pointer;
+}
+.series-toggle button.active { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
+
+.series-chart { width: 100%; height: auto; display: block; }
+.series-grid { stroke: var(--line); stroke-width: 0.5; }
+.series-tick, .series-month { fill: var(--muted); font-size: 9px; }
+.series-gap-label { fill: var(--muted); font-size: 8px; }
+.series-hatch-line { stroke: rgba(0, 0, 0, 0.55); stroke-width: 2; }
+
+/* Tones. A gap is an outline with no fill: visibly empty, never a zero bar. */
+.series-bar rect { stroke-width: 1; }
+.series-bar.tone-ok rect:first-child { fill: #00b7ff; stroke: #00b7ff; }
+.series-bar.tone-partial rect:first-child { fill: #00b7ff; stroke: var(--moderate); fill-opacity: 0.55; }
+.series-bar.tone-different rect:first-child { fill: #00b7ff; stroke: var(--poor); stroke-width: 2; fill-opacity: 0.7; }
+.series-bar.tone-gap rect:first-child { fill: none; stroke: var(--muted); stroke-dasharray: 3 3; }
+.series-bar.clickable { cursor: pointer; }
+.series-bar.clickable:hover rect:first-child,
+.series-bar.clickable:focus rect:first-child { stroke: var(--text); stroke-width: 2; }
+.series-bar:focus { outline: none; }
+
+.series-readout { min-height: 34px; font-size: 12px; margin: 6px 0; }
+.series-readout span { color: var(--muted); }
+.series-flag { margin: 3px 0 0; font-size: 11px; color: var(--muted); }
+.series-flag.flag-orbit_differs, .series-flag.flag-method_differs,
+.series-flag.flag-sensor_differs { color: var(--poor); }
+.series-flag.flag-low_coverage { color: var(--moderate); }
+
+.series-legend { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); }
+.series-legend .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; border: 1px solid transparent; }
+.swatch.tone-ok { background: #00b7ff; }
+.swatch.tone-partial { background: rgba(0, 183, 255, 0.55); border-color: var(--moderate); }
+.swatch.tone-different { background: rgba(0, 183, 255, 0.7); border: 2px solid var(--poor); }
+.swatch.tone-gap { border: 1px dashed var(--muted); }
+
+.series-notes p { font-size: 11.5px; color: var(--muted); margin: 5px 0; }

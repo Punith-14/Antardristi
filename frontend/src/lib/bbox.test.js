@@ -301,6 +301,25 @@ suite('describeFootprint', () => {
     assert.match(text, /9\.52 N/)
   })
 
+  it('describes a polygon by its corner count, not its bounding box', () => {
+    // A polygon response carries a bbox as well as a ring. Falling through to
+    // the bbox branch would label an outline by the rectangle around it - a
+    // number nothing in the analysis ever measured.
+    const text = describeFootprint({
+      name: 'user-defined polygon',
+      footprint: {
+        kind: 'polygon',
+        points: 7,
+        bbox: [76.0, 9.5, 77.0, 10.5],
+        approx_area_km2: 12392,
+      },
+    })
+    assert.match(text, /7-point outline/)
+    assert.match(text, /10\.00 N/)
+    assert.match(text, /76\.50 E/)
+    assert.ok(!/12,392/.test(text), 'must not quote the bounding box area')
+  })
+
   it('leaves named regions reading as they did', () => {
     assert.equal(describeFootprint({ name: 'Kerala' }), 'Kerala')
     assert.equal(describeFootprint({ name: 'Bangalore Urban' }), 'Bangalore Urban')

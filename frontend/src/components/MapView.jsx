@@ -9,6 +9,13 @@ import {
   validateCircle,
 } from '../lib/bbox'
 import {
+  actionFromKey,
+  describePolygon,
+  drawingHint,
+  validatePolygon,
+  withinSnap,
+} from '../lib/polygon'
+import {
   clipInset,
   percentFromPointer,
   periodLabel,
@@ -52,9 +59,16 @@ export default function MapView({
   const layersRef = useRef({ overlay: null, baseline: null, zones: null, markers: null })
   const draggingRef = useRef(false)
   const drawRef = useRef({ active: false, origin: null, rectangle: null })
+  // The in-progress polygon's Leaflet layers, kept out of state: they change
+  // on every click and re-rendering the whole map for a preview line would
+  // tear down the tile layer.
+  const ringRef = useRef({ outline: null, vertices: [], points: [] })
 
-  const [drawing, setDrawing] = useState(null)   // null | 'box' | 'circle'
+  const [drawing, setDrawing] = useState(null)   // null | 'box' | 'circle' | 'polygon'
   const [drawError, setDrawError] = useState('')
+  // Committed vertices of the polygon being drawn. State rather than a ref
+  // because the hint line and the point count are rendered from it.
+  const [ring, setRing] = useState([])
 
   const [swipe, setSwipe] = useState(50)
 
@@ -215,7 +229,8 @@ export default function MapView({
   // message about coordinate order that helps nobody.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !window.L || !drawing) return
+    // Polygons are clicked, not dragged, and have their own effect below.
+    if (!map || !window.L || !drawing || drawing === 'polygon') return
 
     const state = drawRef.current
     const isCircle = drawing === 'circle'
@@ -310,6 +325,161 @@ export default function MapView({
     }
   }, [drawing, onDrawArea])
 
+  // Clear the half-drawn ring's preview layers off the map. Called from
+  // several places - finishing, cancelling, unmounting - so it is one
+  // function rather than three copies that can drift apart.
+  const clearRingPreview = useCallback(() => {
+    const map = mapRef.current
+    const state = ringRef.current
+
+    if (map) {
+      if (state.outline) map.removeLayer(state.outline)
+      state.vertices.forEach((marker) => map.removeLayer(marker))
+    }
+    state.outline = null
+    state.vertices = []
+    state.points = []
+    setRing([])
+  }, [])
+
+  // Polygon drawing: click to place a corner, click the first corner again -
+  // or press Enter - to close it.
+  //
+  // A different gesture from the box and circle, and it has to be. A rectangle
+  // is two corners, so a drag expresses it exactly. An arbitrary outline is
+  // not; dragging a freehand path would put hundreds of points in a ring
+  // capped at 500 and hand Earth Engine a shape nobody can edit. Clicks give
+  // the user one corner at a time and a Backspace to take it back.
+  //
+  // The shape is only validated on close, not on every click, because a ring
+  // in progress is legitimately invalid - two points enclose nothing, and
+  // saying so after each click would be noise rather than help.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !window.L || drawing !== 'polygon') return
+
+    const state = ringRef.current
+    map.getContainer().style.cursor = 'crosshair'
+
+    // Dragging stays enabled, unlike the box tool: placing corners around a
+    // catchment usually means panning between them, and a polygon gesture is
+    // clicks rather than a drag, so the two do not collide.
+    const style = { color: '#58a6ff', weight: 2, fillOpacity: 0.12, dashArray: '6 4' }
+
+    const redraw = (points) => {
+      if (state.outline) map.removeLayer(state.outline)
+      state.vertices.forEach((marker) => map.removeLayer(marker))
+      state.vertices = []
+      state.outline = null
+
+      if (points.length >= 2) {
+        const path = points.map((p) => [p.lat, p.lng])
+        state.outline =
+          points.length >= 3
+            ? window.L.polygon(path, style).addTo(map)
+            : window.L.polyline(path, style).addTo(map)
+      }
+
+      points.forEach((point, index) => {
+        state.vertices.push(
+          window.L
+            .circleMarker([point.lat, point.lng], {
+              // The first vertex is the close target, so it is drawn larger.
+              // Without that the user has no idea what to aim at.
+              radius: index === 0 ? 7 : 4,
+              color: '#58a6ff',
+              weight: 2,
+              fillColor: index === 0 ? '#58a6ff' : '#0d1117',
+              fillOpacity: index === 0 ? 0.5 : 1,
+            })
+            .addTo(map),
+        )
+      })
+    }
+
+    // The ref is the authoritative list, not the state.
+    //
+    // The obvious shape - reading the current points inside a setRing updater
+    // - is wrong. An updater has to be pure, and React calls it twice under
+    // StrictMode. Closing the ring from in there would fire onDrawArea twice
+    // and run the whole analysis twice, which nothing on screen would reveal
+    // beyond an Earth Engine bill. So the handler reads the ref, and state is
+    // a mirror kept only for rendering the hint.
+    const commit = (points) => {
+      state.points = points
+      redraw(points)
+      setRing(points)
+    }
+
+    const finish = () => {
+      const points = state.points
+      const check = validatePolygon(points)
+      if (!check.ok) {
+        // Left on the map rather than cleared: a shape refused for crossing
+        // itself is one Backspace from being valid, and wiping it would make
+        // the user start over for a fixable mistake.
+        setDrawError(check.reason)
+        return
+      }
+      clearRingPreview()
+      setDrawError('')
+      setDrawing(null)
+      onDrawArea?.({ kind: 'polygon', points })
+    }
+
+    const onClick = (event) => {
+      const points = state.points
+
+      // Closing: a click on the first vertex, judged in screen pixels so the
+      // target is the same size whatever the zoom.
+      if (points.length >= 3) {
+        const first = map.latLngToContainerPoint([points[0].lat, points[0].lng])
+        if (withinSnap(event.containerPoint, first)) {
+          finish()
+          return
+        }
+      }
+
+      setDrawError('')
+      commit([...points, { lat: event.latlng.lat, lng: event.latlng.lng }])
+    }
+
+    const onKey = (event) => {
+      const action = actionFromKey(event.key)
+      if (!action) return
+      event.preventDefault()
+
+      if (action === 'cancel') {
+        clearRingPreview()
+        setDrawError('')
+        setDrawing(null)
+        return
+      }
+      if (action === 'finish') {
+        finish()
+        return
+      }
+
+      setDrawError('')
+      commit(state.points.slice(0, -1))       // undo
+    }
+
+    map.on('click', onClick)
+    window.addEventListener('keydown', onKey)
+
+    return () => {
+      map.off('click', onClick)
+      window.removeEventListener('keydown', onKey)
+      const container = map.getContainer()
+      if (container) container.style.cursor = ''
+      // Leaving the tool by any route - finishing, cancelling, switching to
+      // the box tool, unmounting - takes the half-drawn ring with it. Without
+      // this a cancelled outline stays painted on the map with no way to
+      // remove it, looking exactly like a committed area.
+      clearRingPreview()
+    }
+  }, [drawing, onDrawArea, clearRingPreview])
+
   // Keep the drawn shape on screen once the drag is over, and take it away
   // when the area is cleared. Redrawn from scratch rather than mutated,
   // because a box and a circle are different Leaflet layer types and reusing
@@ -330,6 +500,13 @@ export default function MapView({
     if (drawnArea.kind === 'circle') {
       state.rectangle = window.L
         .circle(drawnArea.centre, { ...style, radius: drawnArea.radiusKm * 1000 })
+        .addTo(map)
+      return
+    }
+
+    if (drawnArea.kind === 'polygon') {
+      state.rectangle = window.L
+        .polygon(drawnArea.points.map((p) => [p.lat, p.lng]), style)
         .addTo(map)
       return
     }
@@ -394,7 +571,9 @@ export default function MapView({
             <span className="draw-chip" title="The area measured, not a district">
               {drawnArea.kind === 'circle'
                 ? describeCircle(drawnArea.centre, drawnArea.radiusKm)
-                : describeBbox(drawnArea.bbox)}
+                : drawnArea.kind === 'polygon'
+                  ? describePolygon(drawnArea.points)
+                  : describeBbox(drawnArea.bbox)}
             </span>
             <button type="button" onClick={() => { setDrawError(''); onDrawArea?.(null) }}>
               Use a named region
@@ -422,6 +601,17 @@ export default function MapView({
             >
               {drawing === 'circle' ? 'Drag outwards, or cancel' : 'Draw a circle'}
             </button>
+            <button
+              type="button"
+              className={drawing === 'polygon' ? 'drawing' : ''}
+              onClick={() => {
+                setDrawError('')
+                clearRingPreview()
+                setDrawing((mode) => (mode === 'polygon' ? null : 'polygon'))
+              }}
+            >
+              {drawing === 'polygon' ? 'Click corners, or cancel' : 'Draw a shape'}
+            </button>
           </>
         )}
       </div>
@@ -429,9 +619,11 @@ export default function MapView({
       {(drawing || drawError) && (
         <div className={`draw-hint${drawError ? ' draw-hint-error' : ''}`}>
           {drawError ||
-            (drawing === 'circle'
-              ? 'Press at the centre and drag outwards. The distance you drag is the radius.'
-              : 'Drag on the map to box an area. Works anywhere, including districts too new for the 2015 boundaries.')}
+            (drawing === 'polygon'
+              ? drawingHint(ring)
+              : drawing === 'circle'
+                ? 'Press at the centre and drag outwards. The distance you drag is the radius.'
+                : 'Drag on the map to box an area. Works anywhere, including districts too new for the 2015 boundaries.')}
         </div>
       )}
 

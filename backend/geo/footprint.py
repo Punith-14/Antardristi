@@ -148,6 +148,54 @@ def from_point(point, radius_km):
     }
 
 
+def _segments_cross(p1, p2, p3, p4):
+    """Whether two segments properly cross. Shared endpoints do not count."""
+
+    def side(origin, a, b):
+        return ((a[0] - origin[0]) * (b[1] - origin[1])
+                - (a[1] - origin[1]) * (b[0] - origin[0]))
+
+    d1 = side(p3, p4, p1)
+    d2 = side(p3, p4, p2)
+    d3 = side(p1, p2, p3)
+    d4 = side(p1, p2, p4)
+
+    # Strict signs only. Two edges of a ring always share a vertex, and
+    # collinear touching is how a corner is built, not a crossing.
+    return ((d1 > 0 > d2) or (d1 < 0 < d2)) and ((d3 > 0 > d4) or (d3 < 0 < d4))
+
+
+def _self_intersects(ring):
+    """Whether a closed ring crosses itself.
+
+    A bowtie is the one invalid polygon that produces a plausible number
+    rather than an error: Earth Engine reduces over it happily, but the two
+    lobes wind in opposite directions and their areas partly cancel, so the
+    figure is the area of nothing the user drew.
+
+    lib/polygon.js refuses this in the browser, which is where the user can
+    still fix it. This is here because a browser is not a validator - the same
+    reason from_bbox re-checks limits the frontend already applied.
+
+    O(n^2) over a ring capped at MAX_POLYGON_POINTS, run once per request.
+    """
+    points = ring[:-1] if len(ring) > 1 and ring[0] == ring[-1] else ring
+    count = len(points)
+    if count < 4:
+        return False
+
+    for i in range(count):
+        a1, a2 = points[i], points[(i + 1) % count]
+        for j in range(i + 1, count):
+            # Skip the adjacent edge and the wrap-around pair, which share a
+            # vertex by construction.
+            if j == (i + 1) % count or (i == 0 and j == count - 1):
+                continue
+            if _segments_cross(a1, a2, points[j], points[(j + 1) % count]):
+                return True
+    return False
+
+
 def from_polygon(coordinates):
     """Validate a ring of [longitude, latitude] pairs. Returns the shape."""
     if not isinstance(coordinates, (list, tuple)) or len(coordinates) < 3:
@@ -174,6 +222,13 @@ def from_polygon(coordinates):
     # Close the ring if the caller did not. Leaflet returns an open ring.
     if ring[0] != ring[-1]:
         ring.append(list(ring[0]))
+
+    if _self_intersects(ring):
+        raise InvalidFootprint(
+            "polygon outline crosses itself, so it does not enclose a single "
+            "area. Any figure measured over it would be the area of nothing "
+            "that was drawn."
+        )
 
     lons = [p[0] for p in ring]
     lats = [p[1] for p in ring]

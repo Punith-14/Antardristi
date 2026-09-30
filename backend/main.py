@@ -1,5 +1,5 @@
 from pathlib import Path
-from uuid import uuid4
+from typing import ClassVar
 
 from dotenv import load_dotenv
 
@@ -11,20 +11,23 @@ from fastapi import File
 from fastapi import Form
 from fastapi import HTTPException
 from fastapi import UploadFile
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from pipeline import analysis
+from core import alignment
 from geo import regions
 from core import cache
 from geo import footprint
 from pipeline import routing
+from pipeline import timeseries
 from detection import sar
 from detection import surface
 from legacy.gee_fetch import NoUsableImagery, analyze_region_water
 from pipeline.report import build_report
-from legacy.ndwi import detect_water_rgb
+from detection import rgb_upload
 from legacy.query_parser import parse_query
 from geo.regions import REGIONS, get_region_geometry, resolve_region
 
@@ -32,7 +35,6 @@ from core import paths
 
 
 BASE_DIR = paths.PROJECT_ROOT
-UPLOAD_DIR = BASE_DIR / "data" / "raw" / "uploads"
 
 app = FastAPI(title="Antardrishti Prototype API")
 
@@ -174,55 +176,6 @@ def build_analysis_response(
     }
 
 
-def build_upload_response(image_path, filename, question="", mode=None):
-    parsed = parse_query(question or f"Analyse uploaded image {filename}", mode)
-    output_name = f"upload_{uuid4().hex[:12]}_result.png"
-    _, water_percentage, explanation, analysis_metadata = detect_water_rgb(
-        image_path,
-        output_name=output_name,
-    )
-
-    image_name = Path(image_path).name
-
-    return {
-        "question": question or "Analyse uploaded image",
-        "intent": parsed["intent"],
-        "mode": parsed["mode"],
-        "analysis": "uploaded-image-screening",
-        "region": {
-            "slug": "uploaded-image",
-            "name": "Uploaded Image",
-            "bbox": None,
-            "summary": "User-provided image analysis.",
-        },
-        "water_percentage": water_percentage,
-        "explanation": explanation,
-        "source_image": f"/data/raw/uploads/{image_name}",
-        "output_image": analysis_metadata["output_image_url"],
-        "metadata": {
-            "source": "User uploaded image",
-            "date_range": None,
-            "scene_count": 1,
-            "cloud_limit": None,
-            "method": analysis_metadata["method"],
-            "threshold": analysis_metadata["threshold"],
-            "severity": analysis_metadata["severity"],
-            "index_type": analysis_metadata["index_type"],
-            "generated_at": parsed["generated_at"],
-            "uploaded_filename": filename,
-            "prototype_note": (
-                "Uploaded-image analysis uses an RGB heuristic because ordinary "
-                "uploads do not contain NIR or SWIR bands."
-            ),
-        },
-        "suggested_next_queries": [
-            "Analyse another uploaded flood image",
-            "Show flooded areas in Kerala",
-            "Analyse water presence in Assam",
-        ],
-    }
-
-
 @app.get("/")
 def home():
     return {"message": "Antardrishti backend is running"}
@@ -262,8 +215,33 @@ class FloodRequest(BaseModel):
     post_end: str
     pre_start: str | None = None
     pre_end: str | None = None
+    # "sentinel-1" (default), "sentinel-2", or None to let cloud cover decide.
+    # Both produce the same evidence quantities, so two runs that differ only
+    # in this field are a like-for-like sensor comparison.
     sensor: str | None = "sentinel-1"
+    # Optical only. None means the default, and is left out of the cache key
+    # (see cache_key_for) so adding this field did not re-key every stored
+    # analysis and re-run them all against Earth Engine quota.
+    cloud_limit: int | None = None
+    # None or "threshold": the validated darkness rule. "change": change
+    # detection against the pre window - Sentinel-1 only, needs pre_start and
+    # pre_end, and unvalidated until notebook 06 has been run.
+    method: str | None = None
     scale: int = 100
+
+    # Added after results were already cached. Left out of the cache key while
+    # unset, so an old request and the same request today share a request_id.
+    # ClassVar, or pydantic treats it as a field without a type and refuses to
+    # build the model - which stops main.py importing at all.
+    LATE_FIELDS: ClassVar[tuple[str, ...]] = ("cloud_limit", "method")
+
+    def cache_key(self):
+        """The request as the cache sees it."""
+        key = self.model_dump()
+        for name in self.LATE_FIELDS:
+            if key.get(name) is None:
+                key.pop(name, None)
+        return key
     generate_report: bool = True
     use_llm: bool = True
 
@@ -275,7 +253,7 @@ def analyze(payload: FloodRequest):
     Shape is defined by contracts/analysis_response.json. Every quantitative
     claim in `report.text` is checkable against `evidence` via `verification`.
     """
-    cache_key = payload.model_dump()
+    cache_key = payload.cache_key()
     request_id = cache.key_for(cache_key)
 
     cached = cache.get(cache_key)
@@ -295,8 +273,14 @@ def analyze(payload: FloodRequest):
             pre_end=payload.pre_end,
             force_sensor=payload.sensor,
             scale=payload.scale,
+            cloud_limit=(payload.cloud_limit if payload.cloud_limit is not None
+                         else analysis.optical.DEFAULT_CLOUD_LIMIT),
+            method=payload.method or "threshold",
         )
-    except sar.NoSarImagery as exc:
+    except (sar.NoSarImagery, surface.NoOpticalImagery) as exc:
+        sensor_name = (
+            "Sentinel-2" if isinstance(exc, surface.NoOpticalImagery) else "Sentinel-1"
+        )
         return {
             "schema_version": "1.0",
             "region": meta,
@@ -311,17 +295,25 @@ def analyze(payload: FloodRequest):
             },
             "report": {
                 "text": (
-                    f"No Sentinel-1 imagery was available for {meta['name']} in "
-                    "the requested period, so no measurement could be made. This "
-                    "is not a finding of 'no flooding' - the ground was not "
-                    "observed."
+                    f"No usable {sensor_name} imagery was available for "
+                    f"{meta['name']} in the requested period, so no measurement "
+                    "could be made. This is not a finding of 'no flooding' - the "
+                    "ground was not observed."
                 ),
                 "fallback_used": True,
                 "generator_model": None,
             },
         }
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+    except sar.NoBaselineImagery as exc:
+        # Not "no data": the post window was seen, and the darkness rule would
+        # answer. But the caller asked for change detection, and handing back a
+        # different method's answer without saying so is the failure this
+        # project is built against. Say what is missing and what would work.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        # An unknown sensor or method, or change detection asked for without
+        # what it needs. The caller's mistake, so a 400 that says what to fix.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     tiles = analysis.tile_urls(result)
     result.pop("_internal", None)
@@ -426,8 +418,21 @@ def ask(payload: AskRequest):
             },
         )
 
+    # Does the route answer the question that was asked?
+    #
+    # Separate from verify_report, which reads the finished prose against the
+    # evidence record and is structurally unable to notice that the evidence
+    # record measured the wrong thing. May-vs-May passed 16 of 16 claims there.
+    # This runs BEFORE the analysis so a mismatch is reported without spending
+    # Earth Engine quota on an answer to a question nobody asked.
+    alignment_result = alignment.check(payload.question, decision)
+
     if payload.dry_run:
-        return {"routing": decision, "understood": routing.describe(decision)}
+        return {
+            "routing": decision,
+            "understood": routing.describe(decision),
+            "alignment": alignment_result,
+        }
 
     common = {
         "region": decision["region"],
@@ -447,9 +452,37 @@ def ask(payload: AskRequest):
             SurfaceRequest(**common, analysis_type=decision["analysis_type"])
         )
 
+    # The question and its alignment check are stored as their own record,
+    # not written into the analysis's cache entry.
+    #
+    # They have to be stored somewhere: the PDF is rendered from the cache,
+    # and without them a PDF of the May-vs-May answer would print a green
+    # "Verified" banner - every number faithful, the question never checked.
+    #
+    # They cannot go in the analysis entry, because that entry is keyed on
+    # the analysis parameters, and two differently worded questions can route
+    # to the same analysis. Whichever was asked last would overwrite the
+    # other's alignment, and a PDF could print one question's verdict under
+    # another question's text.
+    ask_payload = {
+        "kind": "ask",
+        "question": payload.question,
+        "request_id": result.get("request_id"),
+    }
+    ask_id = cache.key_for(ask_payload)
+    cache.put(ask_payload, {
+        "question": payload.question,
+        "routing": decision,
+        "alignment": alignment_result,
+        "understood": routing.describe(decision),
+        "request_id": result.get("request_id"),
+    })
+
     result["routing"] = decision
+    result["alignment"] = alignment_result
     result["understood"] = routing.describe(decision)
     result["question"] = payload.question
+    result["ask_id"] = ask_id
     return result
 
 
@@ -580,6 +613,74 @@ def list_analyses():
     }
 
 
+class SeriesRequest(BaseModel):
+    """Flood extent month by month, for a named region or a drawn area."""
+
+    region: str | None = None
+    bbox: list[float] | None = None
+    point: list[float] | None = None
+    radius_km: float | None = None
+    polygon: list[list[float]] | None = None
+
+    start: str
+    end: str
+    # Required to be a sensor, not None. Letting cloud cover pick per month
+    # could measure June with radar and July with optical, and the jump
+    # between them would be the instrument changing.
+    sensor: str = "sentinel-1"
+    scale: int = 200
+
+
+@app.post("/analyze/series")
+def analyze_series(payload: SeriesRequest):
+    """One flood analysis per calendar month, arranged and checked as a series.
+
+    Each month runs through /analyze itself, so each is a complete analysis
+    with its own evidence record and request_id, cached independently: a
+    series that overlaps an earlier one reuses its months, and any month can
+    be opened or exported as a PDF on its own.
+
+    Reports are not generated per month. Twelve language-model calls would
+    hit the rate limit and add prose nobody reads in a chart; the evidence
+    record for each month is complete without one.
+    """
+    if payload.sensor not in analysis.SENSORS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"A series needs one named sensor ({', '.join(analysis.SENSORS)}), "
+                "so every month is measured by the same instrument."
+            ),
+        )
+
+    try:
+        windows = timeseries.monthly_windows(payload.start, payload.end)
+    except timeseries.InvalidSeries as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    area = {
+        "region": payload.region,
+        "bbox": payload.bbox,
+        "point": payload.point,
+        "radius_km": payload.radius_km,
+        "polygon": payload.polygon,
+    }
+
+    results = []
+    for window in windows:
+        results.append(analyze(FloodRequest(
+            **area,
+            post_start=window["start"],
+            post_end=window["end"],
+            sensor=payload.sensor,
+            scale=payload.scale,
+            generate_report=False,
+            use_llm=False,
+        )))
+
+    return timeseries.build(windows, results, sensor=payload.sensor)
+
+
 @app.post("/analyze/surface")
 def analyze_surface(payload: SurfaceRequest):
     """Vegetation, water, built-up, bare ground and moisture stress.
@@ -671,6 +772,65 @@ def get_analysis(request_id: str):
     return stored
 
 
+@app.get("/analyze/{request_id}/report.pdf")
+def analysis_pdf(request_id: str, ask_id: str | None = None):
+    """The stored analysis as a PDF, for the answer that has to leave the app.
+
+    Rendered from the stored response for this request_id and nothing else -
+    no Earth Engine call, no model call, no recomputation. The PDF is a view
+    of the evidence record, so it cannot disagree with it.
+
+    `ask_id`, returned by /ask, adds the question that was asked and the
+    check of whether the analysis answers it. Without it the PDF can only
+    vouch for the numbers, not for whether they were the right numbers.
+    """
+    stored = cache.get_by_id(request_id)
+    if stored is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No analysis {request_id}. Run POST /analyze first.",
+        )
+    stored["request_id"] = request_id
+
+    if ask_id:
+        asked = cache.get_by_id(ask_id)
+        if asked is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No question {ask_id}. It may have expired; ask again.",
+            )
+        # A question record belongs to exactly one analysis. Printing it on
+        # another would put one question's verdict under a different answer.
+        if asked.get("request_id") != request_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Question {ask_id} was not answered by analysis {request_id}.",
+            )
+        for key in ("question", "routing", "alignment", "understood"):
+            if key in asked:
+                stored[key] = asked[key]
+
+    try:
+        from pipeline import export_pdf
+        content = export_pdf.render(stored)
+    except ImportError as exc:
+        # reportlab is the one dependency only this endpoint needs. Saying so
+        # beats a 500 with a traceback about a module nobody knew was used.
+        raise HTTPException(
+            status_code=501,
+            detail=f"PDF export needs reportlab: pip install reportlab ({exc}).",
+        ) from exc
+
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{export_pdf.filename_for(stored)}"',
+        },
+    )
+
+
 @app.get("/analyze/{request_id}/zones.geojson")
 def zones_geojson(request_id: str):
     """Zone centroids as GeoJSON, for direct consumption by Leaflet.
@@ -717,17 +877,30 @@ def query(payload: QueryRequest):
 async def analyze_upload(
     image: UploadFile = File(...),
     question: str = Form(""),
-    mode: str | None = Form(None),
+    mode: str | None = Form(None),       # accepted for old clients, unused
 ):
-    suffix = Path(image.filename or "upload.png").suffix or ".png"
-    if suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
-        return {"error": "Unsupported file type. Please upload PNG, JPG, JPEG, or WEBP."}
+    """Screen an uploaded RGB image for water-coloured pixels.
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    saved_name = f"upload_{uuid4().hex[:12]}{suffix.lower()}"
-    saved_path = UPLOAD_DIR / saved_name
+    Same contract as /analyze: an evidence record, caveats, a verified report
+    and a request_id that works with GET /analyze/{id} and the PDF export.
+    What differs is what the numbers can mean - a fraction of image pixels,
+    never an area of ground - and detection/rgb_upload.py says why.
+
+    The original file is not written to disk. The old path kept every upload,
+    and a phone photo's EXIF can carry the GPS position of wherever it was
+    taken. Only the overlay is kept, re-encoded without metadata.
+    """
+    suffix = Path(image.filename or "upload.png").suffix.lower()
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        # 400, not a 200 with an "error" key: a client checking the status
+        # code would otherwise treat the refusal as a result.
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Upload a PNG, JPG, JPEG or WEBP.",
+        )
 
     content = await image.read()
-    saved_path.write_bytes(content)
-
-    return build_upload_response(saved_path, image.filename or saved_name, question, mode)
+    try:
+        return rgb_upload.analyse(content, image.filename or "upload", question)
+    except rgb_upload.UnreadableImage as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

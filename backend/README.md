@@ -16,35 +16,59 @@ backend/
     cache.py            analyses keyed by request
     evidence.py         the evidence record
     verification.py     checks a report against that record
+    alignment.py        checks the route against the QUESTION (May-vs-May)
 
   geo/                Where an analysis runs, and how it is drawn.
     regions.py          names, through FAO GAUL 2015
-    footprint.py        areas the user draws instead
+    footprint.py        areas the user draws instead (box, circle, polygon)
     indices.py          spectral indices on Sentinel-2
-    mapping.py          display hints
+    mapping.py          display hints; "solid" only for validated methods
     zones.py            contiguous regions, vectorised and ranked
 
   detection/          Imagery into masks. The measurement itself.
-    sar.py              Sentinel-1 flood, mean(VV,VH) at -20 dB
+    sar.py              Sentinel-1 flood, mean(VV,VH) at -20 dB; change
+                        detection opt-in, IoU 0.505 vs 0.485 (notebook 06)
+    optical.py          Sentinel-2 flood, same evidence shape as sar.py;
+                        MNDWI > 0.15, IoU 0.743 on L1C (see its caveat)
     surface.py          six optical analyses
     classifier.py       land-cover Random Forest, run inside Earth Engine
+    rgb_upload.py       uploaded photos: pixel fractions, never km2
 
   pipeline/           Question in, evidence-bound answer out.
     routing.py          plain language into a structured query
-    analysis.py         runs it, builds the evidence record
+    analysis.py         runs it (either sensor), builds the evidence record
     report.py           writes the prose, which is then verified
+    timeseries.py       one full analysis per month, gaps kept as gaps
+    export_pdf.py       the stored response as a PDF; nothing recomputed
 
-  legacy/             The pre-evidence-record path, still serving /query
-    gee_fetch.py        and the upload endpoint. Kept working, not extended.
-    ndwi.py
+  legacy/             The pre-evidence-record path, still serving /query.
+    gee_fetch.py        Kept working, not extended.
+    ndwi.py             superseded by detection/rgb_upload.py; unused
     query_parser.py
 
   scripts/            Run by hand. Measurement, training, diagnosis.
+    fetch_pre_event.py  baselines for notebook 06 (resumable, slow)
   manual_checks/      End-to-end checks a person reads.
-  tests/              The pytest suite. 314 tests.
-  notebooks/          Colab notebooks for the measurement runs.
+  tests/              The pytest suite (534 at last count). fake_ee.py and
+                      flood_scenario.py run the whole flood path on numpy grids.
+  notebooks/          Measurement runs. 05 = optical flood, 06 = change detection.
   results/            Generated output from scripts/.
 ```
+
+## Endpoints added in September 2026
+
+| endpoint | what it does |
+|---|---|
+| `POST /analyze` with `"sensor": "sentinel-2"` | optical flood, same evidence quantities as radar |
+| `POST /analyze` with `"method": "change"` | radar change detection against the pre window |
+| `POST /analyze/series` | flood extent month by month, up to 12 months |
+| `GET /analyze/{id}/report.pdf[?ask_id=]` | the stored analysis as a PDF |
+| `POST /analyze-upload` | now returns an evidence record and a `request_id` |
+
+Both measured numbers are filled: `VALIDATION` in `detection/optical.py`
+(notebook 05) and `CHANGE_VALIDATION` in `detection/sar.py` (notebook 06), on
+2026-09-30. Tests tie each to the results file its notebook wrote, so they
+cannot be edited by hand or left behind when a threshold changes.
 
 ## Running things
 

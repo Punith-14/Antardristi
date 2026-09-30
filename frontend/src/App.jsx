@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { api, runAnalysis } from './api'
+import { api, runAnalysis, runSeries } from './api'
 import { describeFootprint } from './lib/bbox'
 import MapView from './components/MapView'
 import QueryPanel from './components/QueryPanel'
 import ResultPanel from './components/ResultPanel'
+import SeriesPanel from './components/SeriesPanel'
 import './App.css'
 
 const DEFAULT_FORM = {
@@ -36,6 +37,11 @@ export default function App() {
   // Lives here rather than in the form because the map owns the gesture and
   // the query panel owns the name.
   const [drawnArea, setDrawnArea] = useState(null)
+  // A monthly series, when one was asked for. Kept alongside `result` rather
+  // than replacing it: opening a month puts that month in `result` while the
+  // series stays, so "back to the series" costs nothing.
+  const [series, setSeries] = useState(null)
+  const [opening, setOpening] = useState(false)
 
   useEffect(() => {
     api
@@ -57,6 +63,7 @@ export default function App() {
 
       try {
         const data = await runAnalysis({ ...query, area: drawnArea })
+        setSeries(null)
         setResult(data)
         setStatus('done')
         setHistory((current) =>
@@ -81,6 +88,37 @@ export default function App() {
     },
     [form, drawnArea],
   )
+
+  const submitSeries = useCallback(async () => {
+    setStatus('loading')
+    setError('')
+    setSelectedZone(null)
+    try {
+      const data = await runSeries({ ...form, area: drawnArea })
+      setSeries(data)
+      setResult(null)
+      setStatus('done')
+    } catch (err) {
+      setStatus('error')
+      setError(err.message)
+    }
+  }, [form, drawnArea])
+
+  // One month of the series, as its own full analysis: evidence, zones, map
+  // layers and PDF. Fetched by id from the cache, so nothing is recomputed.
+  const openMonth = useCallback(async (requestId) => {
+    setOpening(true)
+    setError('')
+    try {
+      const data = await api.analysis(requestId)
+      setResult(data)
+      setSelectedZone(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setOpening(false)
+    }
+  }, [])
 
   const applyPreset = (preset) => {
     const next = { ...DEFAULT_FORM, preStart: '', preEnd: '', ...preset }
@@ -119,6 +157,7 @@ export default function App() {
             form={form}
             onChange={setForm}
             onSubmit={submit}
+            onSeries={submitSeries}
             onPreset={applyPreset}
             status={status}
             error={error}
@@ -155,13 +194,33 @@ export default function App() {
         </section>
 
         <aside className="column right">
-          <ResultPanel
-            result={result}
-            selectedZone={selectedZone}
-            onSelectZone={setSelectedZone}
-            highlighted={highlighted}
-            onCite={jumpToEvidence}
-          />
+          {series && !result ? (
+            <SeriesPanel
+              key={series.points?.map((p) => p.request_id || p.label).join('|')}
+              series={series}
+              onOpenMonth={openMonth}
+              opening={opening}
+            />
+          ) : (
+            <>
+              {series && (
+                <button
+                  type="button"
+                  className="back-to-series"
+                  onClick={() => { setResult(null); setSelectedZone(null) }}
+                >
+                  ← Back to the monthly series
+                </button>
+              )}
+              <ResultPanel
+                result={result}
+                selectedZone={selectedZone}
+                onSelectZone={setSelectedZone}
+                highlighted={highlighted}
+                onCite={jumpToEvidence}
+              />
+            </>
+          )}
         </aside>
       </main>
     </div>

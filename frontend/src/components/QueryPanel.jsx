@@ -41,6 +41,7 @@ export default function QueryPanel({
   form,
   onChange,
   onSubmit,
+  onSeries,
   onPreset,
   status,
   error,
@@ -165,6 +166,19 @@ export default function QueryPanel({
       <button className="run" type="submit" disabled={status === 'loading'}>
         {status === 'loading' ? 'Analysing…' : 'Run analysis'}
       </button>
+
+      {form.analysisType === 'flood_extent' && onSeries && (
+        <div className="series-run">
+          <button type="button" disabled={status === 'loading'} onClick={onSeries}>
+            Run month by month
+          </button>
+          <small>
+            One full analysis per calendar month from From to To, up to 12.
+            Slow the first time; each month is cached after that. Months with
+            no imagery show as gaps, never as zero.
+          </small>
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
 

@@ -42,6 +42,23 @@ def check(label, condition, detail=""):
     return condition
 
 
+def detail_text(response):
+    """The error message, whichever shape the API sent it in.
+
+    Newer handlers send a structured detail - {"error", "message", ...} - so
+    the error kind can be read by code. Older ones send a plain string. A
+    check that assumes a string searches a dict's KEYS for the phrase and
+    fails even when the message is right, which is what happened here.
+    """
+    try:
+        detail = response.json().get("detail", "")
+    except ValueError:
+        return response.text
+    if isinstance(detail, dict):
+        return " ".join(str(v) for v in detail.values())
+    return str(detail)
+
+
 def main():
     print("1. health")
     response = requests.get(f"{BASE}/", timeout=10)
@@ -57,7 +74,8 @@ def main():
     if response.status_code == 404:
         check(
             "explains the 2015 boundary limit",
-            "2015" in response.json().get("detail", ""),
+            "2015" in detail_text(response),
+            detail_text(response)[:90],
         )
 
     print("\n3. Kerala August 2018 (first call, hits Earth Engine)")
@@ -180,12 +198,93 @@ def main():
     )
     check("listed zones sum <= total extent", zone_total <= extent + 1)
 
+    check_drawn_polygon()
+
     with open("api_response.json", "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2)
     print("\nSaved api_response.json")
     print("\nReport:\n")
     print(report.get("text", ""))
 
+
+# A rough outline around Kuttanad, the way the map's shape tool would send it:
+# an open ring of [longitude, latitude], no repeated closing point.
+KUTTANAD_OUTLINE = [
+    [76.30, 9.35],
+    [76.58, 9.32],
+    [76.62, 9.58],
+    [76.44, 9.71],
+    [76.26, 9.60],
+]
+
+
+def check_drawn_polygon():
+    """A drawn outline reaches Earth Engine and comes back honestly labelled.
+
+    The unit tests prove the ring is validated and the endpoint declares the
+    field. Neither proves a polygon survives the trip to Earth Engine and back
+    - that needs a live reduction, which is what this does.
+    """
+    print("\n13. a drawn polygon is measured and labelled as user-supplied")
+
+    body = {
+        "polygon": KUTTANAD_OUTLINE,
+        "post_start": "2018-08-15",
+        "post_end": "2018-08-25",
+        "sensor": "sentinel-1",
+        "scale": 200,
+    }
+    response = requests.post(f"{BASE}/analyze", json=body, timeout=600)
+    if not check("polygon analysis returns 200", response.status_code == 200,
+                 str(response.status_code)):
+        print("   ", response.text[:400])
+        return
+
+    payload = response.json()
+    region = payload.get("region") or {}
+    shape = region.get("footprint") or {}
+
+    check("the shape came back as a polygon", shape.get("kind") == "polygon",
+          str(shape.get("kind")))
+    check(
+        "the point count is what was drawn, not the closed ring",
+        shape.get("points") == len(KUTTANAD_OUTLINE),
+        f"{shape.get('points')} vs {len(KUTTANAD_OUTLINE)} drawn",
+    )
+    # The claim this whole feature exists to keep honest: a drawn area is not
+    # a district, and nothing in the response may imply it is.
+    check("admin_level is custom", region.get("admin_level") == "custom",
+          str(region.get("admin_level")))
+    check("no state is claimed", region.get("state") in (None, ""),
+          str(region.get("state")))
+    check(
+        "the note says it is not an administrative boundary",
+        "not an administrative boundary" in (region.get("note") or "").lower(),
+    )
+    check("evidence was still produced", len(payload.get("evidence") or []) > 0,
+          f"{len(payload.get('evidence') or [])} records")
+
+    print("\n14. two shapes at once are refused rather than silently picked")
+    both = {**body, "bbox": [76.3, 9.3, 76.7, 9.8]}
+    response = requests.post(f"{BASE}/analyze", json=both, timeout=60)
+    # 422, the status every invalid shape has used since footprint.py was
+    # written: the request is well-formed JSON describing an unusable area.
+    check("refused with 422", response.status_code == 422, str(response.status_code))
+    if response.status_code == 422:
+        text = detail_text(response)
+        check("names both shapes", "bbox" in text and "polygon" in text, text[:90])
+
+    print("\n15. a self-intersecting outline is refused, not measured")
+    # Earth Engine would return a number for a bowtie: the two lobes wind
+    # opposite ways and partly cancel, so the figure is the area of nothing
+    # anyone drew. Refused on both sides - the browser so the user can fix it,
+    # here because a browser is not a validator.
+    bowtie = {**body, "polygon": [[76.3, 9.4], [76.6, 9.4], [76.3, 9.7], [76.6, 9.7]]}
+    response = requests.post(f"{BASE}/analyze", json=bowtie, timeout=60)
+    check("refused with 422", response.status_code == 422, str(response.status_code))
+    if response.status_code == 422:
+        text = detail_text(response)
+        check("says why rather than just rejecting", "crosses itself" in text, text[:90])
 
 if __name__ == "__main__":
     main()
