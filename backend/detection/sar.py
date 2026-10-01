@@ -129,6 +129,18 @@ SCALE_RULES = {
             "iou": 0.609,
             "precision": 0.807,
             "recall": 0.713,
+            # Notebook 08 (evaluation/events_results.json): the Indian chips the
+            # threshold was never tuned on. They lie at 25.7-27.3 N, 92.4-93.9 E
+            # - the Brahmaputra valley in Assam, August 2016. One event in one
+            # river valley: the 95{'chips': 28, 'iou': 0.725, 'precision': 0.902, 'recall': 0.787, 'lo': 0.564, 'hi': 0.829}ange is the honest answer, not the point.
+            "india": {
+                "event": "Assam, August 2016",
+                "chips": 28,
+                "iou": 0.725,
+                "precision": 0.902,
+                "recall": 0.787,
+                "ci95": [0.564, 0.829],
+            },
         },
     },
 }
@@ -256,6 +268,45 @@ class NoBaselineImagery(RuntimeError):
             f"Sentinel-1 scenes{orbit} for {start_date} to {end_date}. Widen the "
             "baseline window, or use method 'threshold'."
         )
+
+
+def acquisition_days(collection):
+    """Distinct UTC days the scenes in a collection were acquired. One round trip."""
+    from pipeline.latest import days_from_ms
+
+    return days_from_ms(collection.aggregate_array("system:time_start").getInfo() or [])
+
+
+def latest_acquisition(region, today=None, lookback_days=None):
+    """The newest Sentinel-1 pass over a region, and the passes before it.
+
+    Dual-polarisation scenes first, VV alone if there are none - the same
+    order detect_water uses, so the pass found is one the analysis can use.
+    Raises NoSarImagery when nothing passed in the lookback window.
+    """
+    from datetime import date as _date, timedelta
+    from pipeline import latest as latest_mode
+
+    today = today or _date.today()
+    lookback = lookback_days or latest_mode.LOOKBACK_DAYS
+    start = (today - timedelta(days=lookback)).isoformat()
+    end = (today + timedelta(days=1)).isoformat()
+
+    for polarisations in (POLARISATIONS, ("VV",)):
+        collection = get_collection(region, start, end, polarisations)
+        times = collection.aggregate_array("system:time_start").getInfo() or []
+        if times:
+            orbits = collection.aggregate_array("relativeOrbitNumber_start").getInfo() or []
+            newest = max(range(len(times)), key=lambda i: times[i])
+            days = latest_mode.days_from_ms(times)
+            return {
+                "date": days[-1],
+                "relative_orbit": orbits[newest] if newest < len(orbits) else None,
+                "recent_passes": days,
+                "polarisations": "+".join(polarisations),
+                "lookback_days": lookback,
+            }
+    raise NoSarImagery(start, end)
 
 
 def baseline_composite(region, start_date, end_date, relative_orbit,
@@ -474,6 +525,9 @@ def detect_water(region, start_date, end_date, polarisations=POLARISATIONS,
     if scene_count == 0:
         raise NoSarImagery(start_date, end_date, orbit_pass)
 
+    # When the images were taken, so every result can say how old it is.
+    acquired = acquisition_days(collection)
+
     # Minimum backscatter over the window: water is dark, so the minimum
     # captures water present at ANY point. A mean would dilute a short flood.
     # Taken per band, then speckle filtered per band, and only then fused -
@@ -544,6 +598,7 @@ def detect_water(region, start_date, end_date, polarisations=POLARISATIONS,
         "threshold_scale_m": scale_rule["measured_at_m"] if fused else 10,
         "threshold_scale_exact": scale_rule["exact"] if fused else scale == 10,
         "composite": "per-pixel minimum backscatter over window",
+        "acquisition_days": acquired,
         "speckle_filter": f"focal median {speckle_radius} m",
         "orbit_pass": orbit_pass,
         "relative_orbit": relative_orbit,
@@ -553,7 +608,7 @@ def detect_water(region, start_date, end_date, polarisations=POLARISATIONS,
 
 KNOWN_CONFUSIONS = [
     "Radar shadow behind terrain and tall buildings is dark and can read as water.",
-    "Smooth dry surfaces such as tarmac, sand flats and bare hardpan can read as water.",
+    "Smooth dry surfaces such as tarmac, sand flats and bare hardpan can read as water. Measured: precision falls to 0.22 in arid Somalia and 0.32 in Pakistan, against 0.88 in Assam - treat flood maps over dry ground (Rajasthan, Kutch) with matching caution.",
     "Flooded vegetation may NOT be detected: the canopy bounces the pulse off the "
     "trunks and back to the sensor, so water beneath trees or tall crops reads as "
     "bright rather than dark. Measured at 7.7% of all undetected water.",

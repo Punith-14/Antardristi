@@ -10,6 +10,17 @@ import {
   writtenBy,
 } from '../lib/ask'
 import { SORTS, nextSort, sortZones } from '../lib/zonesort'
+import {
+  DISTRICT_SORTS,
+  freshnessLine,
+  isStale,
+  nextPassLine,
+  peopleCell,
+  peopleSources,
+  peopleText,
+  sortDistricts,
+  sumCheckLine,
+} from '../lib/insights'
 
 const fmt = (value, unit) => {
   if (value == null) return '—'
@@ -156,6 +167,111 @@ function UploadPreview({ result }) {
   )
 }
 
+/**
+ * How old the image is. Shown near the top: for disaster staff "when was
+ * this seen?" decides how much the rest is worth. With latest-pass mode, the
+ * next expected pass and - when one pass covered too little - an offer to
+ * include the days before it, with the dates stated.
+ */
+function Freshness({ acquisition, latest, onExtend }) {
+  const line = freshnessLine(acquisition)
+  if (!line && !latest) return null
+  const stale = isStale(acquisition)
+  const next = nextPassLine(latest)
+  const offer = latest?.extend_offer
+
+  return (
+    <section className={`freshness ${stale ? 'freshness-stale' : ''}`}>
+      {line && <p className="freshness-line">{line}</p>}
+      {latest && <p className="freshness-meta">Latest-pass mode: the newest Sentinel-1 image over this area.</p>}
+      {next && <p className="freshness-meta">{next}</p>}
+      {offer && (
+        <div className="freshness-offer">
+          <p>{offer.reason}</p>
+          <button type="button" onClick={() => onExtend?.(offer)}>
+            Use {offer.post_start} to {offer.post_end} instead
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** People living in the flooded area: a two-model range, its sources, and
+ *  - when it could not be computed - that, rather than a silent gap. */
+function People({ population }) {
+  if (!population) return null
+  if (population.error) {
+    return <section className="people people-missing"><p>{population.error}</p></section>
+  }
+  const text = peopleText(population.people_in_flood)
+  if (!text) return null
+  return (
+    <section className="people">
+      <h3>People living in the flooded area</h3>
+      <p className="people-figure">{text}</p>
+      <small>
+        {peopleSources(population)} population models. Residents of flooded
+        cells, not people displaced or harmed; likely an undercount, because
+        part of the flood water is missed.
+      </small>
+    </section>
+  )
+}
+
+/** Per district: worst first for a state, or the districts a drawn area
+ *  falls in. Partly observed districts are marked, never quietly ranked low. */
+function Districts({ districts }) {
+  const [sortKey, setSortKey] = useState('flooded_km2')
+  const rows = useMemo(() => sortDistricts(districts?.rows, sortKey), [districts, sortKey])
+  if (!districts) return null
+  if (districts.error) {
+    return <section className="districts"><h3>Districts</h3><p className="people-missing">{districts.error}</p></section>
+  }
+  if (!rows.length) return null
+  const overlap = districts.kind === 'drawn_area_overlap'
+
+  return (
+    <section className="districts">
+      <h3>{overlap ? 'Districts this area falls in' : 'Districts, worst first'}</h3>
+      <div className="zone-sort" role="group" aria-label="Sort districts">
+        {DISTRICT_SORTS.map(({ key, label }) => (
+          <button key={key} type="button"
+            className={`sort-key ${sortKey === key ? 'active' : ''}`}
+            aria-pressed={sortKey === key} onClick={() => setSortKey(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <table className="district-table">
+        <thead>
+          <tr>
+            <th>District</th><th>Flooded</th><th>% flooded</th><th>People</th>
+            <th>{overlap ? '% of area' : '% seen'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.name}|${row.state}`} className={row.low_coverage ? 'partly-seen' : ''}>
+              <td>{row.name}{overlap && row.state ? <small> {row.state}</small> : null}</td>
+              <td>{row.flooded_km2.toLocaleString()} km²</td>
+              <td>{row.flooded_pct == null ? '—' : `${row.flooded_pct}%`}</td>
+              <td>{peopleCell(row.people)}</td>
+              <td>
+                {overlap ? `${row.share_of_area_pct}%` : `${row.observed_pct}%`}
+                {row.low_coverage && <span className="partly-flag" title="Less than 90% of this district was observed"> partly seen</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <small className="district-foot">
+        {sumCheckLine(districts.sum_check)} Boundaries: {districts.boundary_source}.
+      </small>
+    </section>
+  )
+}
+
 function Evidence({ evidence, highlighted }) {
   if (!evidence?.length) return null
 
@@ -248,7 +364,10 @@ function Zones({ zones, summary, selected, onSelect }) {
             onClick={() => onSelect(zone.id)}
           >
             <span className="zone-rank">{zone.rank}</span>
-            <span className="zone-area">{zone.area_km2.toLocaleString()} km²</span>
+            <span className="zone-area">
+              {zone.area_km2.toLocaleString()} km²
+              {zone.population && <small className="zone-people"> · {peopleCell(zone.population)} people</small>}
+            </span>
             <span className="zone-loc">
               {zone.centroid[1].toFixed(2)} N {zone.centroid[0].toFixed(2)} E
             </span>
@@ -259,7 +378,7 @@ function Zones({ zones, summary, selected, onSelect }) {
   )
 }
 
-export default function ResultPanel({ result, selectedZone, onSelectZone, highlighted, onCite }) {
+export default function ResultPanel({ result, selectedZone, onSelectZone, highlighted, onCite, onExtend }) {
   if (!result) {
     return (
       <div className="panel result-panel empty">
@@ -299,6 +418,7 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
       </div>
 
       <Understood result={result} />
+      <Freshness acquisition={result.acquisition} latest={result.latest} onExtend={onExtend} />
 
       {noData ? (
         <section className="no-data">
@@ -317,11 +437,13 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
             verification={result.verification}
             onCite={onCite}
           />
+          <People population={result.population} />
           <Coverage
             observation={result.observation}
             unobserved={result.unobserved}
           />
           <Evidence evidence={result.evidence} highlighted={highlighted} />
+          <Districts districts={result.districts} />
           <Zones
             zones={result.zones}
             summary={result.zones_summary}

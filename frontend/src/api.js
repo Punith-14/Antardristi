@@ -143,6 +143,7 @@ export function runAnalysis({
   preStart,
   preEnd,
   scale,
+  latest,
 }) {
   const common = {
     // A drawn shape replaces the name rather than joining it. Sending both
@@ -157,6 +158,14 @@ export function runAnalysis({
   }
 
   if (analysisType === 'flood_extent') {
+    // Latest-pass mode: the newest Sentinel-1 image sets the dates, so none
+    // are sent - and no baseline, which would describe a period nobody chose.
+    if (latest) {
+      return api.flood({
+        ...common, post_start: null, post_end: null, pre_start: null, pre_end: null,
+        sensor: 'sentinel-1', latest: true,
+      })
+    }
     return api.flood({ ...common, sensor: 'sentinel-1' })
   }
   return api.surface({ ...common, analysis_type: analysisType })

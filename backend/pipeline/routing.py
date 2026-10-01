@@ -420,6 +420,22 @@ def validate(route, today=None):
 # ----------------------------------------------------------------- facade
 
 def route(text, client=None, model=None, today=None, prefer_model=True):
+    """Turn a plain-language question into a structured query, then mark it
+    as a "latest pass" question when it asks about now and names no date."""
+    from pipeline.latest import asks_for_latest
+
+    result = _route(text, client=client, model=model, today=today,
+                    prefer_model=prefer_model)
+    if result.get("analysis_type") == "flood_extent" and asks_for_latest(text):
+        # Flood only: the latest-pass mode is a Sentinel-1 feature. A baseline
+        # the router derived from its default window would describe a period
+        # nobody asked about, so it is dropped.
+        result["latest"] = True
+        result["pre_start"] = result["pre_end"] = None
+    return result
+
+
+def _route(text, client=None, model=None, today=None, prefer_model=True):
     """Turn a plain-language question into a structured query.
 
     Rules run first and settle most queries. The model is consulted when the
@@ -536,6 +552,8 @@ def describe(route_result):
     if route_result.get("refused") or route_result.get("analysis_type") is None:
         return "this question cannot be answered from satellite imagery"
 
+    if route_result.get("latest"):
+        period = "the latest available radar pass"
     text = f"{analysis} for {region}, {period}"
     if route_result.get("pre_start"):
         text += f", compared with {route_result['pre_start']} to {route_result['pre_end']}"

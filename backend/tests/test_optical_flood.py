@@ -57,7 +57,23 @@ def test_the_sar_path_is_unchanged_by_the_refactor(monkeypatch, baseline):
     # this test still proves nothing ELSE moved.
     assert now["observation"].pop("relative_orbit") == 63
 
-    assert now == golden["with_baseline" if baseline else "single"]
+    # Added with the population feature: present on every flood result, None
+    # here because the harness switches population off.
+    assert now.pop("population") is None
+    assert now.pop("districts") is None
+    # The fake detector reports no acquisition days, so no acquisition block.
+    assert now.pop("acquisition") is None
+
+    # The warnings list is documentation that grows as measurements come in
+    # (notebook 08 added the dry-ground precision figures). It is checked
+    # against sar.py's live list; every number is still compared exactly.
+    from detection import sar
+    expected = golden["with_baseline" if baseline else "single"]
+    confusions = now["provenance"].pop("known_confusions")
+    assert confusions[:len(sar.KNOWN_CONFUSIONS)] == list(sar.KNOWN_CONFUSIONS)
+    expected = {**expected, "provenance": {k: v for k, v in expected["provenance"].items()
+                                           if k != "known_confusions"}}
+    assert now == expected
 
 
 # ---------------------------------------------------- the numbers, by hand

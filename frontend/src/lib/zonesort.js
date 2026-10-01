@@ -14,6 +14,7 @@ export const SORTS = [
   { key: 'rank', label: 'Rank' },
   { key: 'area', label: 'Area' },
   { key: 'severity', label: 'Severity' },
+  { key: 'people', label: 'People' },
   { key: 'north', label: 'Latitude' },
 ]
 
@@ -25,6 +26,10 @@ function value(zone, key) {
       return SEVERITY_ORDER[zone?.severity] ?? 99
     case 'north':
       return zone?.centroid?.[1] ?? 0
+    case 'people':
+      // The upper end of the two-model range. A zone with no figure sorts as
+      // -1, below a zone with 0 people, so "unknown" is never read as "most".
+      return zone?.population?.high ?? -1
     case 'rank':
     default:
       return zone?.rank ?? 0
@@ -57,7 +62,7 @@ export function sortZones(zones, key = 'rank', direction = 'asc') {
  * ascending would mean "smallest first", which nobody wants from one click.
  */
 export function defaultDirection(key) {
-  return key === 'area' ? 'desc' : 'asc'
+  return key === 'area' || key === 'people' ? 'desc' : 'asc'
 }
 
 /** Clicking the active column flips it; clicking another switches to it. */

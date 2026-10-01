@@ -43,7 +43,7 @@ def _fmt(value, unit):
         return f"{value:,.1f} km2"
     if unit == "percent":
         return f"{value:.2f}%"
-    if unit == "zones":
+    if unit in ("zones", "people"):
         return f"{value:,.0f}"
     return f"{value:,.2f} {unit}".strip()
 
@@ -131,7 +131,7 @@ def render_template_report(payload):
         text = (
             f"The detected area falls into "
             f"{_fmt(zone_count['value'], zone_count['unit'])} "
-            f"distinct zones [{zone_count['id']}]"
+            f"distinct {'zone' if zone_count['value'] == 1 else 'zones'} [{zone_count['id']}]"
         )
         if largest_zone:
             text += (
@@ -154,6 +154,29 @@ def render_template_report(payload):
                 f"{len(severe)} of these are classed high severity and should be "
                 "treated as priority areas."
             )
+
+    people = [item for item in evidence
+              if item.get("quantity", "").startswith("population_in_flood_extent_")]
+    if people:
+        values = sorted(people, key=lambda item: item["value"])
+        cites = "".join(f"[{item['id']}]" for item in values)
+        if len(values) > 1 and values[0]["value"] != values[-1]["value"]:
+            sentences.append(
+                f"An estimated {_fmt(values[0]['value'], 'people')} to "
+                f"{_fmt(values[-1]['value'], 'people')} people live in the flooded "
+                f"area {cites}."
+            )
+        else:
+            sentences.append(
+                f"An estimated {_fmt(values[0]['value'], 'people')} people live in "
+                f"the flooded area {cites}."
+            )
+
+    districts = payload.get("districts") or {}
+    worst = [r for r in (districts.get("rows") or []) if r.get("flooded_km2", 0) > 0][:3]
+    if worst and districts.get("kind") == "state_breakdown":
+        listed = ", ".join(f"{r['name']} ({_fmt(r['flooded_km2'], 'km2')})" for r in worst)
+        sentences.append(f"The most affected districts are {listed}.")
 
     permanent = _find(evidence, "permanent_water_area")
     if permanent:
@@ -241,13 +264,32 @@ def _build_prompt(payload):
         lines.append("")
         lines.append("ZONES (largest first, coordinates are lon/lat):")
         for zone in zones[:8]:
+            people = zone.get("population") or {}
+            living = (f", people living there {people['low']} to {people['high']}"
+                      if people.get("low") is not None else "")
             lines.append(
                 f"  {zone['id']} rank {zone['rank']}: {zone['area_km2']} km2, "
                 f"centred {zone['centroid'][1]:.2f} N {zone['centroid'][0]:.2f} E, "
-                f"severity {zone['severity']}"
+                f"severity {zone['severity']}{living}"
             )
         if len(zones) > 8:
             lines.append(f"  ... and {len(zones) - 8} smaller zones")
+
+    district_rows = ((payload.get("districts") or {}).get("rows")) or []
+    if district_rows:
+        kind = (payload.get("districts") or {}).get("kind")
+        lines.append("")
+        lines.append("DISTRICTS (worst first)" if kind == "state_breakdown"
+                     else "DISTRICTS THE DRAWN AREA FALLS IN")
+        for row in district_rows[:6]:
+            people = row.get("people") or {}
+            living = (f", people living in flooded area {people['low']} to {people['high']}"
+                      if people.get("low") is not None else "")
+            partial = ", PARTLY OBSERVED" if row.get("low_coverage") else ""
+            lines.append(
+                f"  {row['name']}: {row['flooded_km2']} km2 flooded, "
+                f"{row['observed_pct']}% of district observed{living}{partial}"
+            )
 
     lines.append("")
     lines.append("EVIDENCE:")
@@ -383,6 +425,20 @@ def collect_extra_values(payload):
             extra[f"zone_{zone_id}_lat"] = centroid[1]
         for index, value in enumerate(zone.get("bbox") or []):
             extra[f"zone_{zone_id}_bbox{index}"] = value
+        people = zone.get("population") or {}
+        for bound in ("low", "high"):
+            if people.get(bound) is not None:
+                extra[f"zone_{zone_id}_people_{bound}"] = people[bound]
+
+    # District figures are computed by the pipeline, so quoting them is
+    # verifiable - the same reasoning as zone areas above.
+    for index, row in enumerate(((payload.get("districts") or {}).get("rows")) or []):
+        for field in ("flooded_km2", "flooded_pct", "observed_pct", "share_of_area_pct"):
+            if row.get(field) is not None:
+                extra[f"district{index}_{field}"] = row[field]
+        for bound in ("low", "high"):
+            if (row.get("people") or {}).get(bound) is not None:
+                extra[f"district{index}_people_{bound}"] = row["people"][bound]
 
     # Numbers inside pipeline-written notes are verifiable by construction: the
     # pipeline computed them. Without this, a report that faithfully repeats a

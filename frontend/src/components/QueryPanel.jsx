@@ -42,6 +42,7 @@ export default function QueryPanel({
   onChange,
   onSubmit,
   onSeries,
+  onLatest,
   onPreset,
   status,
   error,
@@ -166,6 +167,18 @@ export default function QueryPanel({
       <button className="run" type="submit" disabled={status === 'loading'}>
         {status === 'loading' ? 'Analysing…' : 'Run analysis'}
       </button>
+
+      {form.analysisType === 'flood_extent' && onLatest && (
+        <div className="series-run">
+          <button type="button" disabled={status === 'loading'} onClick={onLatest}>
+            Latest radar image
+          </button>
+          <small>
+            Ignores the dates above and analyses the newest Sentinel-1 pass over
+            the area. The result says how old that image is.
+          </small>
+        </div>
+      )}
 
       {form.analysisType === 'flood_extent' && onSeries && (
         <div className="series-run">

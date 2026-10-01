@@ -276,6 +276,68 @@ def _region_rows(region):
     return rows
 
 
+def _acquisition_rows(acquisition, latest):
+    """When the images were taken, and how old the newest was at export."""
+    rows = []
+    if acquisition and acquisition.get("last"):
+        first, last = acquisition.get("first"), acquisition["last"]
+        rows.append(("Images taken", last if first == last else f"{first} to {last}"))
+        if acquisition.get("age_text"):
+            rows.append(("Newest image at export", acquisition["age_text"]))
+    if latest:
+        rows.append(("Mode", "latest pass - the newest Sentinel-1 image over the area"))
+        next_pass = latest.get("next_pass") or {}
+        if next_pass.get("expected_on"):
+            rows.append(("Next pass (estimate)", next_pass["expected_on"]))
+    return rows
+
+
+def _people_text(range_):
+    if not range_ or range_.get("low") is None:
+        return None
+    low, high = range_["low"], range_.get("high", range_["low"])
+    return f"{low:,}" if low == high else f"{low:,} to {high:,}"
+
+
+def _population_view(population):
+    if not population:
+        return None
+    if population.get("error"):
+        return {"error": population["error"]}
+    return {
+        "text": _people_text(population.get("people_in_flood")),
+        "sources": ", ".join(f"{s['label']} {s['year']}" for s in population.get("sources") or []),
+        "caveat": population.get("caveat"),
+    }
+
+
+def _district_view(districts):
+    if not districts:
+        return None
+    if districts.get("error"):
+        return {"error": districts["error"]}
+    overlap = districts.get("kind") == "drawn_area_overlap"
+    rows = [{
+        "name": r["name"] + (f" ({r['state']})" if overlap and r.get("state") else ""),
+        "flooded": format_value(r["flooded_km2"], "km2"),
+        "pct": "-" if r.get("flooded_pct") is None else f"{r['flooded_pct']}%",
+        "people": _people_text(r.get("people")) or "-",
+        "seen": (f"{r.get('share_of_area_pct')}% of area" if overlap
+                 else f"{r['observed_pct']}%") + (" (partly seen)" if r.get("low_coverage") else ""),
+    } for r in districts.get("rows") or []]
+    check = districts.get("sum_check") or {}
+    return {
+        "title": "Districts this area falls in" if overlap else "Districts, worst first",
+        "rows": rows,
+        "check": (f"Districts total {check.get('districts_total_km2')} km2 against "
+                  f"{check.get('region_total_km2')} km2 for the region"
+                  + ("" if check.get("within_tolerance") else
+                     " - the 2015 state and district boundaries do not align exactly")
+                  ) if check else "",
+        "source": districts.get("boundary_source"),
+    }
+
+
 def _zone_outlines(result, limit=50):
     """Zone polygons as lists of (lon, lat), for the schematic map."""
     outlines = []
@@ -308,6 +370,7 @@ def _zones(result):
             "id": z.get("id"),
             "area": format_value(z.get("area_km2"), "km2"),
             "severity": z.get("severity") or "",
+            "people": _people_text(z.get("population")) or "-",
             "where": (
                 f"{z['centroid'][1]:.3f} N, {z['centroid'][0]:.3f} E"
                 if isinstance(z.get("centroid"), (list, tuple)) and len(z["centroid"]) == 2
@@ -371,6 +434,9 @@ def outline(result, exported_at=None):
         "zones": _zones(result),
         "region": _region_rows(region),
         "alignment": result.get("alignment"),
+        "acquisition": _acquisition_rows(result.get("acquisition"), result.get("latest")),
+        "population": _population_view(result.get("population")),
+        "districts": _district_view(result.get("districts")),
         "provenance": {
             "pipeline_version": provenance.get("pipeline_version"),
             "datasets": provenance.get("datasets") or [],
@@ -487,7 +553,9 @@ def schematic_map(outlines, width, height, zones=None):
     # Scale bar: a degree of latitude is 111.32 km everywhere.
     km_per_point = 111.32 / scale
     bar_km = _nice_length(km_per_point * (width * 0.25))
-    if bar_km:
+    # A single zone gives a near-zero extent and a scale bar of "5e-05 km".
+    # Below 100 m a bar tells the reader nothing, so none is drawn.
+    if bar_km and bar_km >= 0.1:
         bar = bar_km / km_per_point
         drawing.add(Line(pad, 8, pad + bar, 8, strokeWidth=1.2))
         drawing.add(Line(pad, 5, pad, 11, strokeWidth=1))
@@ -578,6 +646,23 @@ def render(result, exported_at=None):
     else:
         story.append(Paragraph("No report text was generated.", small))
 
+    # --- when the images were taken ----------------------------------------
+    if doc_data["acquisition"]:
+        story.append(Paragraph("When the images were taken", h2))
+        story.append(_key_value_table(doc_data["acquisition"], cell))
+
+    # --- people --------------------------------------------------------------
+    population = doc_data["population"]
+    if population:
+        story.append(Paragraph("People living in the flooded area", h2))
+        if population.get("error"):
+            story.append(Paragraph(para(population["error"]), small))
+        elif population.get("text"):
+            story.append(Paragraph(
+                f"<b>{para(population['text'])} people</b> ({para(population['sources'])})", body))
+            if population.get("caveat"):
+                story.append(Paragraph(para(population["caveat"]), small))
+
     # --- evidence ----------------------------------------------------------
     if doc_data["evidence"]:
         story.append(Paragraph("Evidence record", h2))
@@ -622,14 +707,36 @@ def render(result, exported_at=None):
             story.append(Spacer(1, 3))
         if zones["rows"]:
             rows = [[Paragraph(f"<b>{h}</b>", cell) for h in
-                     ("Rank", "ID", "Area", "Severity", "Centre")]]
+                     ("Rank", "ID", "Area", "Severity", "People", "Centre")]]
             for z in zones["rows"]:
                 rows.append([Paragraph(para(v), cell) for v in
-                             (z["rank"], z["id"], z["area"], z["severity"], z["where"])])
-            table = Table(rows, colWidths=[14 * mm, 16 * mm, 32 * mm, 24 * mm, 88 * mm],
+                             (z["rank"], z["id"], z["area"], z["severity"], z["people"], z["where"])])
+            table = Table(rows, colWidths=[13 * mm, 14 * mm, 28 * mm, 22 * mm, 34 * mm, 63 * mm],
                           repeatRows=1)
             table.setStyle(_grid())
             story.append(table)
+
+    # --- districts -----------------------------------------------------------
+    districts = doc_data["districts"]
+    if districts:
+        block = [Paragraph(para(districts.get("title", "Districts")), h2)]
+        if districts.get("error"):
+            block.append(Paragraph(para(districts["error"]), small))
+        else:
+            rows = [[Paragraph(f"<b>{h}</b>", cell) for h in
+                     ("District", "Flooded", "% flooded", "People", "Seen")]]
+            for r in districts["rows"]:
+                rows.append([Paragraph(para(r[k]), cell)
+                             for k in ("name", "flooded", "pct", "people", "seen")])
+            table = Table(rows, colWidths=[46 * mm, 28 * mm, 22 * mm, 38 * mm, 40 * mm],
+                          repeatRows=1)
+            table.setStyle(_grid())
+            block.append(table)
+            if districts.get("check"):
+                block.append(Paragraph(para(districts["check"]) + ".", small))
+        story.append(KeepTogether(block[:3]) if len(block) <= 3 else block[0])
+        if len(block) > 3:
+            story.extend(block[1:])
 
     # --- area and boundary -------------------------------------------------
     story.append(KeepTogether([

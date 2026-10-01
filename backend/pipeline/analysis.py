@@ -14,6 +14,8 @@ import ee
 
 from core import earth_engine
 from geo import mapping
+from geo import districts as district_model
+from geo import population as population_model
 from geo import regions
 from detection import optical
 from detection import sar
@@ -163,6 +165,24 @@ def choose_sensor(region, start_date, end_date, force=None):
     return "sentinel-2", "optical_conditions_acceptable", fraction, available
 
 
+def india_clause(india):
+    """The Indian-chip score, appended to the accuracy sentence - or nothing.
+
+    One clause in the existing note rather than a note of its own: every note
+    has to survive into the generated report, and each extra one makes the
+    model likelier to drop something and fail the completeness check.
+    """
+    if not india or india.get("iou") is None:
+        return ""
+    low, high = (india.get("ci95") or [None, None])[:2]
+    spread = (f" (95% range {low} to {high})"
+              if low is not None and high is not None else "")
+    return (
+        f" On held-out Indian chips ({india['chips']} chips, {india['event']}) "
+        f"it scores IoU {india['iou']}{spread}."
+    )
+
+
 SENSORS = ("sentinel-1", "sentinel-2")
 
 # "threshold" is the validated darkness rule that ships. "change" compares
@@ -292,6 +312,7 @@ def _detect_sar(region, post_start, post_end, scale, method="threshold",
         "known_confusions": list(sar.KNOWN_CONFUSIONS),
         "reliability": "moderate" if validation else "unvalidated",
         "internal": {"composite": post_composite, "orbit": orbit},
+        "acquisition_days": post_info.get("acquisition_days"),
     }
 
 
@@ -470,6 +491,7 @@ def analyse_flood(
             f"{validation['dataset']}. About {false_positives:.0%} of detected "
             f"pixels are expected to be false positives, and about {missed:.0%} "
             "of true flooding is expected to be missed."
+            + india_clause(validation.get("india"))
         )
 
     builder.add(
@@ -564,6 +586,45 @@ def analyse_flood(
                     "contiguous flooding."
                 ),
             )
+
+    # Who lives there. Two models, reported as a range; summed on each
+    # population dataset's own grid (geo/population.py explains the four-fold
+    # undercount that summing at the analysis scale would cause).
+    people = None
+    if flood_area > 0:
+        people = population_model.exposure(
+            flood_mask, region, flood_zones, post_start, scale,
+            missed_fraction=(1 - validation["recall"]) if validation else None,
+        )
+    if people and people.get("people_in_flood"):
+        for source in people["sources"]:
+            count = people["people_in_flood"]["by_source"].get(source["key"])
+            if count is None:
+                continue
+            builder.add(
+                f"population_in_flood_extent_{source['key']}",
+                count,
+                "people",
+                method=(
+                    f"{source['label']} {source['year']} residential population, "
+                    "summed over cells the flood map marks as flooded, on the "
+                    "population dataset's own grid"
+                ),
+                source=source["id"],
+                derived_from=[e_extent],
+                note="Model estimate of residents, not of people displaced or harmed.",
+            )
+        builder.note(people["caveat"])
+        for zone in flood_zones:
+            zone["population"] = (people.get("per_zone") or {}).get(zone["id"])
+
+    # Which districts. For a state, its districts ranked; for a drawn area,
+    # the districts it falls in. Nothing for a single named district.
+    districts = district_model.breakdown(
+        flood_mask, valid, region, region_meta, scale, flood_area, event_date=post_start,
+    ) if flood_area > 0 else None
+    if districts and districts.get("note"):
+        builder.note(districts["note"])
 
     baseline_mask = None
     if pre_start and pre_end:
@@ -660,6 +721,21 @@ def analyse_flood(
             for zone in flood_zones
         ],
         "zones_summary": zone_extraction.summarise(zone_result) if flood_zones else None,
+        # The range, its sources and its caveat - or the reason it is missing,
+        # so an absent figure reads as "could not be computed", not "nobody".
+        "population": (
+            {k: v for k, v in people.items() if k != "per_zone"} if people else None
+        ),
+        "districts": districts,
+        # Which days the images were taken. Its age is added when the result
+        # is returned (main.py), not here - a cached result must not keep
+        # saying "1 day old".
+        "acquisition": (
+            {"days": detection.get("acquisition_days"),
+             "first": detection["acquisition_days"][0],
+             "last": detection["acquisition_days"][-1]}
+            if detection.get("acquisition_days") else None
+        ),
         "zones_geojson": zone_extraction.to_geojson(flood_zones, "both"),
         "map": mapping.display_hints(
             "flood_extent",
@@ -672,6 +748,8 @@ def analyse_flood(
             datasets=[
                 {"id": detection["dataset"], "role": "primary imagery"},
                 {"id": GSW, "role": "permanent water mask"},
+                *[{"id": s["id"], "role": f"population ({s['label']} {s['year']})"}
+                  for s in ((people or {}).get("sources") or [])],
                 {
                     "id": region_meta.get("boundary_source", "unknown"),
                     "role": "administrative boundary",

@@ -286,5 +286,81 @@ def check_drawn_polygon():
         text = detail_text(response)
         check("says why rather than just rejecting", "crosses itself" in text, text[:90])
 
+def check_group_a():
+    """People, districts, image age and latest-pass mode, live on Earth Engine.
+
+    The unit tests replace Earth Engine with numpy grids. These are the
+    checks that only a real run can make: that the population datasets load,
+    that GAUL districts resolve for a real state, and that a real latest pass
+    is found.
+    """
+    print("\n16. people, districts and image age (Kerala, August 2018, 200 m)")
+    body = {**KERALA_2018, "post_start": "2018-08-01", "post_end": "2018-08-31",
+            "pre_start": None, "pre_end": None, "scale": 200, "use_llm": False}
+    started = time.time()
+    response = requests.post(f"{BASE}/analyze", json=body, timeout=900)
+    if not check("200", response.status_code == 200, f"{time.time() - started:.0f}s"):
+        print("   ", response.text[:400])
+        return
+    payload = response.json()
+
+    population = payload.get("population") or {}
+    if not check("population computed", population and not population.get("error"),
+                 population.get("error", "")):
+        pass
+    people = population.get("people_in_flood") or {}
+    check("both models answered", len(people.get("by_source") or {}) == 2,
+          str(people.get("by_source")))
+    check("range is ordered", (people.get("low") or 0) <= (people.get("high") or 0),
+          f"{people.get('low')} to {people.get('high')}")
+    # Kerala has about 35 million people. A flood count above that means the
+    # counting went wrong - the averaging pitfall would go the other way, so
+    # also require it to be non-trivial for a flood of this size.
+    check("plausible for Kerala", 1_000 < (people.get("high") or 0) < 35_000_000,
+          f"{people.get('high')}")
+    check("zones carry people", any(z.get("population") for z in payload.get("zones") or []))
+
+    districts = payload.get("districts") or {}
+    rows = districts.get("rows") or []
+    check("district breakdown for a state", districts.get("kind") == "state_breakdown",
+          str(districts.get("kind") or districts.get("error")))
+    check("Kerala's districts listed", 10 <= len(rows) <= 16, f"{len(rows)} districts")
+    check("worst first", rows == sorted(rows, key=lambda r: -r["flooded_km2"]))
+    sum_check = districts.get("sum_check") or {}
+    print(f"   [note] districts total {sum_check.get('districts_total_km2')} km2 vs region "
+          f"{sum_check.get('region_total_km2')} km2 "
+          f"({'within' if sum_check.get('within_tolerance') else 'OUTSIDE'} tolerance)")
+
+    acquisition = payload.get("acquisition") or {}
+    check("image dates present", bool(acquisition.get("last")), str(acquisition.get("last")))
+    check("image age worked out", isinstance(acquisition.get("age_days"), int),
+          str(acquisition.get("age_text")))
+
+    text = (payload.get("report") or {}).get("text", "")
+    check("report mentions people", "people live in the flooded area" in text)
+    verification = payload.get("verification") or {}
+    check("report still fully verified", verification.get("passed") is True,
+          str(verification.get("unsupported_claims")))
+
+    print("\n17. latest-pass mode (Kerala, newest Sentinel-1 image)")
+    response = requests.post(f"{BASE}/analyze", json={
+        "region": "kerala", "latest": True, "scale": 200, "use_llm": False}, timeout=900)
+    if not check("200", response.status_code == 200, str(response.status_code)):
+        print("   ", response.text[:400])
+        return
+    payload = response.json()
+    latest = payload.get("latest") or {}
+    period = (payload.get("period") or {}).get("post") or {}
+    check("found a recent pass", bool(latest.get("date")), str(latest.get("date")))
+    check("analysed exactly that day", period.get("start") == latest.get("date"),
+          f"{period.get('start')} to {period.get('end')}")
+    age = (payload.get("acquisition") or {}).get("age_days")
+    check("image is recent", isinstance(age, int) and age <= 30, f"{age} days old")
+    print(f"   [note] coverage {payload.get('observation', {}).get('coverage_fraction')}; "
+          f"extend offer: {'yes' if latest.get('extend_offer') else 'no'}; "
+          f"next pass estimate: {(latest.get('next_pass') or {}).get('expected_on')}")
+
+
 if __name__ == "__main__":
     main()
+    check_group_a()

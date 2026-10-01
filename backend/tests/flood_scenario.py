@@ -117,6 +117,13 @@ def install(monkeypatch, clear_optical=True):
     if clear_optical:
         monkeypatch.setattr(optical, "detect_water", fake_optical_detect)
 
+    # Population needs real Earth Engine datasets. Off by default so the flood
+    # path's golden output is unchanged; tests that need it patch it back on.
+    from geo import population
+    monkeypatch.setattr(population, "exposure", lambda *a, **k: None)
+    from geo import districts
+    monkeypatch.setattr(districts, "breakdown", lambda *a, **k: None)
+
     monkeypatch.setattr(zone_extraction, "extract", fake_zone_extract)
     monkeypatch.setattr(zone_extraction, "to_geojson",
                         lambda zones, kind="polygon": {"type": "FeatureCollection",

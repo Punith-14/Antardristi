@@ -23,6 +23,7 @@ from core import cache
 from geo import footprint
 from pipeline import routing
 from pipeline import timeseries
+from pipeline import latest as latest_mode
 from detection import sar
 from detection import surface
 from legacy.gee_fetch import NoUsableImagery, analyze_region_water
@@ -211,10 +212,16 @@ class FloodRequest(BaseModel):
     radius_km: float | None = None
     polygon: list[list[float]] | None = None
 
-    post_start: str
-    post_end: str
+    # Required unless `latest` is set, in which case the newest Sentinel-1
+    # pass decides them.
+    post_start: str | None = None
+    post_end: str | None = None
     pre_start: str | None = None
     pre_end: str | None = None
+    # True: analyse the most recent Sentinel-1 pass over the area. Resolved to
+    # real dates BEFORE the cache key is built, so today's "latest" and next
+    # week's "latest" are never confused with each other.
+    latest: bool | None = None
     # "sentinel-1" (default), "sentinel-2", or None to let cloud cover decide.
     # Both produce the same evidence quantities, so two runs that differ only
     # in this field are a like-for-like sensor comparison.
@@ -233,7 +240,7 @@ class FloodRequest(BaseModel):
     # unset, so an old request and the same request today share a request_id.
     # ClassVar, or pydantic treats it as a field without a type and refuses to
     # build the model - which stops main.py importing at all.
-    LATE_FIELDS: ClassVar[tuple[str, ...]] = ("cloud_limit", "method")
+    LATE_FIELDS: ClassVar[tuple[str, ...]] = ("cloud_limit", "method", "latest")
 
     def cache_key(self):
         """The request as the cache sees it.
@@ -261,7 +268,55 @@ def analyze(payload: FloodRequest):
 
     Shape is defined by contracts/analysis_response.json. Every quantitative
     claim in `report.text` is checkable against `evidence` via `verification`.
+
+    With `latest`, the newest Sentinel-1 pass over the area sets the dates.
+    Every result leaves with the age of its newest image worked out NOW.
     """
+    latest_info = None
+    if payload.latest:
+        geometry, _ = resolve_area_or_fail(payload)
+        try:
+            found = sar.latest_acquisition(geometry)
+        except sar.NoSarImagery as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=(f"No Sentinel-1 pass over this area in the last "
+                        f"{latest_mode.LOOKBACK_DAYS} days ({exc})."),
+            ) from exc
+        start, end = latest_mode.window(found["date"])
+        payload = payload.model_copy(update={"post_start": start, "post_end": end,
+                                             "latest": None})
+        latest_info = {**found, "next_pass": latest_mode.next_pass_estimate(
+            found["recent_passes"])}
+    elif not (payload.post_start and payload.post_end):
+        raise HTTPException(
+            status_code=400,
+            detail="Give post_start and post_end, or set latest to use the newest pass.",
+        )
+
+    result = _analyze_dates(payload)
+
+    if latest_info:
+        coverage = (result.get("observation") or {}).get("coverage_fraction")
+        if coverage is not None and coverage < latest_mode.LOW_COVERAGE:
+            # One pass often covers part of a state. Offer the few days before
+            # it, with the dates stated, rather than silently widening.
+            start, end = latest_mode.extended_window(latest_info["date"])
+            latest_info["extend_offer"] = {
+                "post_start": start, "post_end": end,
+                "reason": (f"The latest pass covered {coverage:.0%} of the area. "
+                           f"Including the {latest_mode.EXTEND_DAYS} days before it "
+                           "may cover more, at the cost of mixing dates."),
+            }
+        result["latest"] = latest_info
+
+    if result.get("acquisition"):
+        result["acquisition"] = latest_mode.freshness(result["acquisition"])
+    return result
+
+
+def _analyze_dates(payload: FloodRequest):
+    """The analysis for concrete dates - cached by request."""
     cache_key = payload.cache_key()
     request_id = cache.key_for(cache_key)
 
@@ -455,7 +510,8 @@ def ask(payload: AskRequest):
     }
 
     if decision["analysis_type"] == "flood_extent":
-        result = analyze(FloodRequest(**common, sensor="sentinel-1"))
+        result = analyze(FloodRequest(**common, sensor="sentinel-1",
+                                      latest=decision.get("latest") or None))
     else:
         result = analyze_surface(
             SurfaceRequest(**common, analysis_type=decision["analysis_type"])
@@ -805,6 +861,10 @@ def analysis_pdf(request_id: str, ask_id: str | None = None):
             detail=f"No analysis {request_id}. Run POST /analyze first.",
         )
     stored["request_id"] = request_id
+    # Age at export time, not at analysis time: a PDF made today of an
+    # analysis cached last week must say how old the image is today.
+    if stored.get("acquisition"):
+        stored["acquisition"] = latest_mode.freshness(stored["acquisition"])
 
     if ask_id:
         asked = cache.get_by_id(ask_id)

@@ -140,7 +140,7 @@ test('clicking the active column flips the direction', () => {
 test('every offered sort key is one the comparator actually handles', () => {
   // A label in the UI with no matching case silently sorts by rank while
   // claiming to sort by something else.
-  const handled = new Set(['rank', 'area', 'severity', 'north'])
+  const handled = new Set(['rank', 'area', 'severity', 'north', 'people'])
   for (const { key, label } of SORTS) {
     assert.ok(handled.has(key), `no comparator for ${key}`)
     assert.ok(label && label.length > 1)
@@ -149,4 +149,16 @@ test('every offered sort key is one the comparator actually handles', () => {
 
 test('severity order covers exactly the severities the backend emits', () => {
   assert.deepEqual(Object.keys(SEVERITY_ORDER).sort(), ['high', 'low', 'moderate'])
+})
+
+
+test('people sorts most first, and an unknown figure sorts below zero', () => {
+  const zones = [
+    { id: 'a', rank: 1, population: { low: 100, high: 200 } },
+    { id: 'b', rank: 2 },
+    { id: 'c', rank: 3, population: { low: 0, high: 0 } },
+    { id: 'd', rank: 4, population: { low: 900, high: 1500 } },
+  ]
+  const sorted = sortZones(zones, 'people', defaultDirection('people'))
+  assert.deepEqual(sorted.map((z) => z.id), ['d', 'a', 'c', 'b'])
 })

@@ -172,6 +172,17 @@ export default function App() {
     }
   }, [])
 
+  // The newest radar pass over the area, wherever the form's dates point.
+  const submitLatest = useCallback(() => submit({ ...form, latest: true }), [form, submit])
+
+  // One pass covered too little; re-run over the offered days, dates shown.
+  const extendLatest = useCallback((offer) => {
+    const next = { ...form, postStart: offer.post_start, postEnd: offer.post_end,
+      preStart: '', preEnd: '', latest: false }
+    setForm(next)
+    submit(next)
+  }, [form, submit])
+
   const applyPreset = (preset) => {
     const next = { ...DEFAULT_FORM, preStart: '', preEnd: '', ...preset }
     setForm(next)
@@ -219,6 +230,7 @@ export default function App() {
             onChange={setForm}
             onSubmit={submit}
             onSeries={submitSeries}
+            onLatest={submitLatest}
             onPreset={applyPreset}
             status={status}
             error={error}
@@ -279,6 +291,7 @@ export default function App() {
                 onSelectZone={setSelectedZone}
                 highlighted={highlighted}
                 onCite={jumpToEvidence}
+                onExtend={extendLatest}
               />
             </>
           )}
