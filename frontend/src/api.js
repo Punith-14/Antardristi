@@ -47,10 +47,39 @@ async function request(path, options = {}) {
     if (detail && typeof detail === 'object') {
       error.code = detail.error
       error.matches = detail.matches
+      // The whole object, not just the fields picked above. /ask refuses with
+      // what it understood and example questions; dropping those told a user
+      // what was wrong and nothing about how to fix it.
+      error.detail = detail
     }
     throw error
   }
   return body
+}
+
+/**
+ * A multipart upload. Separate from request() because that sets a JSON
+ * Content-Type, and a file upload needs the browser to write its own
+ * multipart boundary into that header.
+ */
+async function upload(path, formData) {
+  const response = await fetch(`${BASE}${path}`, { method: 'POST', body: formData })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const detail = body.detail
+    const error = new Error(
+      typeof detail === 'string' ? detail : detail?.message || `Upload failed (${response.status})`,
+    )
+    if (detail && typeof detail === 'object') error.detail = detail
+    throw error
+  }
+  return body
+}
+
+/** A file the backend serves (an upload overlay, say) as a full URL. */
+export function assetUrl(path) {
+  if (!path || typeof path !== 'string' || !path.startsWith('/outputs/')) return null
+  return `${BASE}${path}`
 }
 
 export const api = {
@@ -75,6 +104,24 @@ export const api = {
     }),
 
   zones: (requestId) => request(`/analyze/${requestId}/zones.geojson`),
+
+  /**
+   * A plain-language question. A drawn area, if any, is sent with it: the
+   * question still decides what to measure and when, the shape decides where.
+   */
+  ask: ({ question, area }) =>
+    request('/ask', {
+      method: 'POST',
+      body: JSON.stringify({ question, ...(area ? areaToRequest(area) : {}) }),
+    }),
+
+  /** Water screening of an uploaded photo. Pixel fractions, never km². */
+  uploadImage: (file, question = '') => {
+    const form = new FormData()
+    form.append('image', file)
+    if (question) form.append('question', question)
+    return upload('/analyze-upload', form)
+  },
 
   /** One stored analysis by id - used to open a single month of a series. */
   analysis: (requestId) => request(`/analyze/${encodeURIComponent(requestId)}`),

@@ -91,6 +91,78 @@ VV_ONLY_VALIDATION = {
     "recall": 0.511,
 }
 
+# The threshold depends on the analysis scale. Measured, not assumed.
+#
+# Everything above was measured on 10 m chips. The service never thresholds
+# 10 m pixels: it reduces at 100-200 m, where Earth Engine serves the MEAN of
+# each 10 x 10 or 20 x 20 block. Averaging pulls dark water pixels towards
+# their brighter neighbours, so the right threshold moves up. Notebook 07
+# measured it on the official Sen1Floods11 split - threshold chosen on the 251
+# train chips, scored on chips the choice never saw, labels aggregated to the
+# coarse pixel by majority (evaluation/spatial_results.json):
+#
+#     200 m     -20 dB   -> -18.5 dB     IoU on test 0.524 -> 0.609
+#                                        valid 0.544 -> 0.594, Bolivia 0.579 -> 0.718
+#     100 m     -20 dB   -> -19.0 dB     IoU on test 0.529 -> 0.570
+#                                        valid 0.538 -> 0.564, Bolivia 0.596 -> 0.682
+#
+# The largest measured gain in the project, from correcting a mismatch rather
+# than adding a method. The coarse-scale IoUs are scored against coarse labels,
+# an easier target, so compare -18.5 with -20 at 200 m - not 0.609 with 0.489.
+SCALE_RULES = {
+    10: {"db": DEFAULT_DB, "validation": VALIDATION},
+    100: {
+        "db": -19.0,
+        "validation": {
+            "dataset": "Sen1Floods11 HandLabeled test split (88 chips) at 100 m, "
+                       "threshold chosen on the train split",
+            "iou": 0.570,
+            "precision": 0.808,
+            "recall": 0.659,
+        },
+    },
+    200: {
+        "db": -18.5,
+        "validation": {
+            "dataset": "Sen1Floods11 HandLabeled test split (88 chips) at 200 m, "
+                       "threshold chosen on the train split",
+            "iou": 0.609,
+            "precision": 0.807,
+            "recall": 0.713,
+        },
+    },
+}
+
+# Part of every flood cache key (main.FloodRequest.cache_key). Results computed
+# under an earlier rule must be recomputed, not served: the same request would
+# otherwise return the old -20 dB extent with no sign the rule had changed.
+RULE_VERSION = "fused_vvvh_scale_thresholds_v2"
+
+
+def rule_for_scale(scale):
+    """The measured threshold and validation for an analysis scale in metres.
+
+    Exact for 10, 100 and 200 m. Anything else uses the nearest measured scale
+    on a log axis (150 m -> 200 m, 30 m -> 10 m) and says so: `exact` is False
+    and `measured_at_m` names the scale the numbers actually describe.
+    """
+    import math
+
+    try:
+        scale = float(scale)
+    except (TypeError, ValueError):
+        scale = 100.0
+    scale = max(scale, 1.0)
+    nearest = min(SCALE_RULES, key=lambda m: abs(math.log(scale / m)))
+    rule = SCALE_RULES[nearest]
+    return {
+        "db": rule["db"],
+        "validation": dict(rule["validation"]),
+        "measured_at_m": nearest,
+        "exact": abs(scale - nearest) < 1e-9,
+    }
+
+
 # Retained for the Otsu path only. These bounds were measured for VV and then
 # shifted by the -3 dB the optimum moved when we switched to the fused band.
 # That shift is an extrapolation, NOT a measurement - re-sweep before trusting
@@ -144,7 +216,7 @@ CHANGE_DARK_DB = DEFAULT_DB
 CHANGE_DROP_DB = -5.0
 CHANGE_CEILING_DB = -16.0
 CHANGE_VALIDATION = {
-    "dataset": "Sen1Floods11 HandLabeled (428 chips with a fetched pre-event baseline)",
+    "dataset": "Sen1Floods11 HandLabeled (428 chips with a fetched pre-event baseline, at 10 m)",
     "iou": 0.505,
     "precision": 0.728,
     "recall": 0.622,
@@ -394,7 +466,9 @@ def detect_water(region, start_date, end_date, polarisations=POLARISATIONS,
                 "no dual-polarisation scenes in this window; used VV alone at "
                 f"{VV_ONLY_DB} dB, which scores IoU "
                 f"{VV_ONLY_VALIDATION['iou']} against "
-                f"{VALIDATION['iou']} for the fused rule"
+                f"{VALIDATION['iou']} for the fused rule, both measured at "
+                "10 m - the VV-only threshold has not been re-measured at "
+                "coarser analysis scales"
             )
 
     if scene_count == 0:
@@ -408,12 +482,13 @@ def detect_water(region, start_date, end_date, polarisations=POLARISATIONS,
     stack = speckle_filter(collection.min().clip(region), speckle_radius)
     composite = fuse(stack, polarisations)
 
+    scale_rule = rule_for_scale(scale)
+
     if threshold_db is None and method == "fixed":
-        # Default. Measured best on Sen1Floods11; see the note at the top.
-        # Both branches are validated numbers, just different ones - the VV-only
-        # optimum is 3 dB higher than the fused one, so the fallback has to move
-        # the threshold too, not merely drop a band.
-        threshold = VV_ONLY_DB if degraded_to else DEFAULT_DB
+        # Default. Measured on Sen1Floods11 AT THE SCALE THIS RUNS AT - see
+        # SCALE_RULES. The VV-only fallback keeps its 10 m threshold, the only
+        # one measured for it, and says so in `degraded`.
+        threshold = VV_ONLY_DB if degraded_to else scale_rule["db"]
         threshold_source = "fixed_validated"
         raw_threshold = None
 
@@ -461,9 +536,13 @@ def detect_water(region, start_date, end_date, polarisations=POLARISATIONS,
         # the result. An Otsu or caller-supplied threshold gets None rather than
         # borrowing a number it did not earn.
         "validation": (
-            dict(VALIDATION if fused else VV_ONLY_VALIDATION)
+            (scale_rule["validation"] if fused else dict(VV_ONLY_VALIDATION))
             if threshold_source == "fixed_validated" else None
         ),
+        # The scale the threshold and its validation were measured at. Equal to
+        # the analysis scale for 10, 100 and 200 m; otherwise the nearest one.
+        "threshold_scale_m": scale_rule["measured_at_m"] if fused else 10,
+        "threshold_scale_exact": scale_rule["exact"] if fused else scale == 10,
         "composite": "per-pixel minimum backscatter over window",
         "speckle_filter": f"focal median {speckle_radius} m",
         "orbit_pass": orbit_pass,

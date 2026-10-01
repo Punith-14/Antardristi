@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api, runAnalysis, runSeries } from './api'
 import { describeFootprint } from './lib/bbox'
+import AskPanel from './components/AskPanel'
 import MapView from './components/MapView'
 import QueryPanel from './components/QueryPanel'
 import ResultPanel from './components/ResultPanel'
@@ -42,6 +43,11 @@ export default function App() {
   // series stays, so "back to the series" costs nothing.
   const [series, setSeries] = useState(null)
   const [opening, setOpening] = useState(false)
+  // Kept apart from `error`, which the form panel shows. A refused question
+  // carries examples and what was understood, and belongs next to the box it
+  // came from; an upload failure belongs next to the upload.
+  const [askError, setAskError] = useState(null)
+  const [uploadFailure, setUploadFailure] = useState('')
 
   useEffect(() => {
     api
@@ -88,6 +94,52 @@ export default function App() {
     },
     [form, drawnArea],
   )
+
+  // Every single-result path lands the same way, so history, series state
+  // and zone selection cannot drift apart between them.
+  const showResult = useCallback((data, label) => {
+    setSeries(null)
+    setResult(data)
+    setSelectedZone(null)
+    setStatus('done')
+    setHistory((current) =>
+      [
+        {
+          id: data.request_id || Date.now(),
+          label,
+          period: data.period?.post?.start || '',
+          data,
+        },
+        ...current.filter((h) => h.id !== data.request_id),
+      ].slice(0, 8),
+    )
+  }, [])
+
+  const askQuestion = useCallback(async (question) => {
+    setStatus('loading')
+    setError('')
+    setAskError(null)
+    try {
+      const data = await api.ask({ question, area: drawnArea })
+      showResult(data, question.length > 60 ? `${question.slice(0, 57)}…` : question)
+    } catch (err) {
+      setStatus('error')
+      setAskError(err)
+    }
+  }, [drawnArea, showResult])
+
+  const uploadImage = useCallback(async (file) => {
+    setStatus('loading')
+    setError('')
+    setUploadFailure('')
+    try {
+      const data = await api.uploadImage(file)
+      showResult(data, `Uploaded image · ${file.name}`)
+    } catch (err) {
+      setStatus('error')
+      setUploadFailure(err.message)
+    }
+  }, [showResult])
 
   const submitSeries = useCallback(async () => {
     setStatus('loading')
@@ -152,6 +204,15 @@ export default function App() {
 
       <main className="layout">
         <aside className="column left">
+          <AskPanel
+            onAsk={askQuestion}
+            onUpload={uploadImage}
+            status={status}
+            askError={askError}
+            uploadFailure={uploadFailure}
+            drawnArea={drawnArea}
+          />
+
           <QueryPanel
             catalogue={catalogue}
             form={form}

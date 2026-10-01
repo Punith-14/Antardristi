@@ -175,14 +175,18 @@ def test_validation_numbers_live_in_exactly_one_place():
         encoding="utf-8"
     )
 
-    for metric in ("iou", "precision", "recall"):
-        literal = f'"{metric}": {sar.VALIDATION[metric]}'
-        assert literal not in source, (
-            f"main.py carries its own copy of {metric}. Read sar.VALIDATION "
-            "instead - two copies drift."
-        )
+    # Every measured scale, not only the 10 m figures: the catalogue now
+    # reports the 200 m numbers, so a copied 0.609 would drift just the same.
+    for rule in sar.SCALE_RULES.values():
+        for metric in ("iou", "precision", "recall"):
+            literal = f'"{metric}": {rule["validation"][metric]}'
+            assert literal not in source, (
+                f"main.py carries its own copy of {metric}. Read it from "
+                "sar.SCALE_RULES instead - two copies drift."
+            )
 
-    assert "sar.VALIDATION" in source
+    assert "sar.rule_for_scale(" in source
+    assert "sar.SCALE_RULES" in source
 
 
 def test_the_accuracy_caveat_is_arithmetic_not_prose():

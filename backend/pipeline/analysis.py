@@ -195,9 +195,13 @@ def _detect_sar(region, post_start, post_end, scale, method="threshold",
     )
 
     notes = []
+    # Which scale the threshold was measured at. Absent on results built
+    # before thresholds became scale-aware, and then the text reads as before.
+    measured_at = post_info.get("threshold_scale_m")
+    at_scale = f" for {measured_at} m analysis" if measured_at else ""
     method_text = (
         f"Sentinel-1 {post_info['polarisation']} at "
-        f"{post_info['threshold']} dB ({post_info['threshold_source']}), "
+        f"{post_info['threshold']} dB{at_scale} ({post_info['threshold_source']}), "
         "permanent water excluded"
     )
     validation = post_info.get("validation")
@@ -210,10 +214,13 @@ def _detect_sar(region, post_start, post_end, scale, method="threshold",
             region, pre_start, pre_end, relative_orbit=orbit,
             polarisations=tuple(post_info["polarisation"].split("+")),
         )
-        post_mask = sar.change_mask(post_composite, pre_composite)
+        # The darkness branch uses the same scale-specific threshold as the
+        # default rule, so change detection can only ADD to what it finds.
+        post_mask = sar.change_mask(post_composite, pre_composite,
+                                    dark_db=post_info["threshold"])
         method_text = (
             f"Sentinel-1 {post_info['polarisation']} change detection: below "
-            f"{sar.CHANGE_DARK_DB} dB, or more than {abs(sar.CHANGE_DROP_DB):g} dB "
+            f"{post_info['threshold']} dB, or more than {abs(sar.CHANGE_DROP_DB):g} dB "
             f"darker than the {pre_start} to {pre_end} median and below "
             f"{sar.CHANGE_CEILING_DB} dB; permanent water excluded"
         )
@@ -229,6 +236,12 @@ def _detect_sar(region, post_start, post_end, scale, method="threshold",
             f"(Otsu returned {post_info['threshold_raw']} dB, clamped to "
             f"{post_info['threshold']} dB). This usually means the scene lacked "
             "a clear land/water separation, so the extent is less reliable."
+        )
+    if post_info.get("threshold_scale_exact") is False and post_info.get("threshold_scale_m"):
+        notes.append(
+            f"The threshold was measured at {post_info['threshold_scale_m']} m and "
+            f"applied at {scale} m, the nearest measured scale; accuracy at "
+            f"{scale} m itself has not been measured."
         )
     if post_info.get("degraded"):
         # sar.detect_water carried this reason out precisely so it would be

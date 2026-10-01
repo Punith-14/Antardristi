@@ -26,8 +26,9 @@ backend/
     zones.py            contiguous regions, vectorised and ranked
 
   detection/          Imagery into masks. The measurement itself.
-    sar.py              Sentinel-1 flood, mean(VV,VH) at -20 dB; change
-                        detection opt-in, IoU 0.505 vs 0.485 (notebook 06)
+    sar.py              Sentinel-1 flood, mean(VV,VH); threshold per scale
+                        (-20 dB at 10 m, -19 at 100 m, -18.5 at 200 m,
+                        notebook 07); change detection opt-in (notebook 06)
     optical.py          Sentinel-2 flood, same evidence shape as sar.py;
                         MNDWI > 0.15, IoU 0.743 on L1C (see its caveat)
     surface.py          six optical analyses

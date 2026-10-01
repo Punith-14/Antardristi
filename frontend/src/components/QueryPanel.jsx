@@ -78,7 +78,7 @@ export default function QueryPanel({
         <select value={form.analysisType} onChange={set('analysisType')}>
           {flood && (
             <option value="flood_extent">
-              Flood extent — validated, IoU {flood.validation.iou}
+              Flood extent — validated, IoU {flood.validation.iou} at 200 m
             </option>
           )}
           {analyses.map((item) => (

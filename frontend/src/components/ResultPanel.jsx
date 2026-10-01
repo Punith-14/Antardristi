@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react'
 
-import { citationSegments, pdfUrl } from '../api'
+import { assetUrl, citationSegments, pdfUrl } from '../api'
+import {
+  alignmentView,
+  hasCoverage,
+  isUpload,
+  periodLine,
+  sourceLine,
+  writtenBy,
+} from '../lib/ask'
 import { SORTS, nextSort, sortZones } from '../lib/zonesort'
 
 const fmt = (value, unit) => {
@@ -40,11 +48,7 @@ function Report({ report, verification, onCite }) {
       </p>
 
       <div className="report-meta">
-        <span>
-          {report.fallback_used
-            ? 'Written from a template'
-            : `Written by ${report.generator_model}`}
-        </span>
+        <span>{writtenBy(report)}</span>
         {verification && (
           <>
             <span>
@@ -69,23 +73,22 @@ function Report({ report, verification, onCite }) {
 
 function Coverage({ observation, unobserved }) {
   if (!observation) return null
-  const fraction = observation.coverage_fraction ?? 1
-  const partial = fraction < 0.9
+  // No coverage figure means no bar. This used to default to 1, which printed
+  // "100.0% of the region observed" for an uploaded photo with no location.
+  const measured = hasCoverage(observation)
+  const fraction = measured ? observation.coverage_fraction : null
+  const partial = measured && fraction < 0.9
 
   return (
     <section className={`coverage ${partial ? 'partial' : ''}`}>
-      <div className="coverage-bar">
-        <div style={{ width: `${Math.min(fraction * 100, 100)}%` }} />
-      </div>
+      {measured && (
+        <div className="coverage-bar">
+          <div style={{ width: `${Math.min(fraction * 100, 100)}%` }} />
+        </div>
+      )}
       <div className="coverage-meta">
-        <strong>{(fraction * 100).toFixed(1)}% of the region observed</strong>
-        <span>
-          {observation.sensor_used === 'sentinel-1'
-            ? 'Sentinel-1 radar'
-            : 'Sentinel-2 optical'}
-          {' · '}
-          {observation.scenes_used}/{observation.scenes_available} scenes used
-        </span>
+        {measured && <strong>{(fraction * 100).toFixed(1)}% of the region observed</strong>}
+        <span>{sourceLine(observation)}</span>
       </div>
       {unobserved?.notes?.length > 0 && (
         <ul className="notes">
@@ -94,6 +97,61 @@ function Coverage({ observation, unobserved }) {
           ))}
         </ul>
       )}
+    </section>
+  )
+}
+
+/**
+ * What the question was taken to mean, and whether the analysis answers it.
+ *
+ * Placed ABOVE the finding. A report can be perfectly faithful to its numbers
+ * while answering a different question - May against May passed 16 of 16
+ * number checks - so if this fails it has to be read first, not found later.
+ */
+function Understood({ result }) {
+  const view = alignmentView(result.alignment)
+  if (!result.question && !view) return null
+
+  return (
+    <section className={`understood ${view ? `understood-${view.tone}` : ''}`}>
+      {result.question && (
+        <p className="understood-question">
+          <span>You asked</span> {result.question}
+        </p>
+      )}
+      {result.understood && (
+        <p className="understood-line">
+          <span>Understood as</span> {result.understood}
+        </p>
+      )}
+      {view && (
+        <>
+          <p className="understood-headline">{view.headline}</p>
+          {view.failures.length > 0 && (
+            <ul>
+              {view.failures.map((failure) => <li key={failure}>{failure}</li>)}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+/**
+ * The uploaded image with the counted pixels tinted, so what was measured
+ * can be seen - drawn from the same mask the number came from.
+ */
+function UploadPreview({ result }) {
+  const src = assetUrl(result.artifacts?.overlay_image)
+  if (!src) return null
+  return (
+    <section className="upload-preview">
+      <img src={src} alt="The uploaded image with water-coloured pixels tinted magenta" />
+      <small>
+        Tinted pixels are the ones counted. Magenta is used because it is neither
+        the blue being looked for nor the brown floodwater this screen misses.
+      </small>
     </section>
   )
 }
@@ -223,10 +281,7 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
         <h2>
           {result.analysis_label || 'Flood extent'} · {result.region?.name}
         </h2>
-        <p>
-          {result.period?.post?.start} to {result.period?.post?.end}
-          {result.period?.pre && ` · baseline ${result.period.pre.start}`}
-        </p>
+        {periodLine(result.period) && <p>{periodLine(result.period)}</p>}
         {pdf && (
           // A plain link rather than a fetch. The server's
           // Content-Disposition: attachment is what makes it download and
@@ -243,6 +298,8 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
         )}
       </div>
 
+      <Understood result={result} />
+
       {noData ? (
         <section className="no-data">
           <h3>Nothing could be observed</h3>
@@ -254,6 +311,7 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
         </section>
       ) : (
         <>
+          {isUpload(result) && <UploadPreview result={result} />}
           <Report
             report={result.report}
             verification={result.verification}

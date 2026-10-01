@@ -236,11 +236,20 @@ class FloodRequest(BaseModel):
     LATE_FIELDS: ClassVar[tuple[str, ...]] = ("cloud_limit", "method")
 
     def cache_key(self):
-        """The request as the cache sees it."""
+        """The request as the cache sees it.
+
+        Late fields are dropped while unset, so adding a field never re-keys
+        anything. The detection rule's version is ADDED, so changing the rule
+        re-keys everything on purpose: a result computed at -20 dB must not be
+        served as the answer of the scale-aware rule. Old entries stay
+        reachable by request_id, and each still carries the validation of the
+        rule that produced it.
+        """
         key = self.model_dump()
         for name in self.LATE_FIELDS:
             if key.get(name) is None:
                 key.pop(name, None)
+        key["flood_rule"] = sar.RULE_VERSION
         return key
     generate_report: bool = True
     use_llm: bool = True
@@ -606,8 +615,13 @@ def list_analyses():
             "validated": True,
             # Read from sar.py rather than restated. A second copy of these
             # numbers went stale once already, and this endpoint is what the
-            # frontend shows users as our accuracy claim.
-            "validation": dict(sar.VALIDATION),
+            # frontend shows users as our accuracy claim. Reported at 200 m,
+            # the scale the frontend runs at, with every measured scale beside it.
+            "validation": sar.rule_for_scale(200)["validation"],
+            "validation_by_scale": {
+                f"{m} m": {"threshold_db": r["db"], **r["validation"]}
+                for m, r in sar.SCALE_RULES.items()
+            },
         },
         "surface": surface.catalogue(),
     }

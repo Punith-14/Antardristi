@@ -441,3 +441,64 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .swatch.tone-gap { border: 1px dashed var(--muted); }
 
 .series-notes p { font-size: 11.5px; color: var(--muted); margin: 5px 0; }
+
+/* ------------------------------------------------ ask a question / upload */
+
+.ask-panel { margin-bottom: 12px; }
+.ask-input {
+  width: 100%; resize: vertical; min-height: 64px;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; font: inherit; font-size: 13px;
+}
+.ask-input:focus { outline: none; border-color: var(--accent); }
+.ask-area-note { display: block; color: var(--muted); font-size: 11px; margin: 4px 0 0; }
+.ask-panel .run { margin-top: 8px; }
+
+.ask-suggestions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; align-items: center; }
+.ask-suggestions span { color: var(--muted); font-size: 11px; margin-right: 2px; }
+.ask-suggestions button {
+  background: transparent; color: var(--muted); text-align: left;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 3px 9px; font: inherit; font-size: 11px; cursor: pointer;
+}
+.ask-suggestions button:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+
+.ask-refused { margin-top: 6px; }
+.ask-understood, .ask-hint { font-size: 11.5px; color: var(--muted); margin: 4px 0; }
+.ask-understood span { color: var(--text); font-weight: 600; margin-right: 4px; }
+
+.upload-block { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
+.upload-block h3 { margin: 0 0 4px; font-size: 13px; }
+.upload-block p { color: var(--muted); font-size: 11.5px; margin: 0 0 8px; }
+.upload-block input[type="file"] { width: 100%; font-size: 12px; color: var(--muted); }
+.upload-run {
+  width: 100%; margin-top: 6px; background: transparent; color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+  font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.upload-run:hover:not(:disabled) { border-color: var(--accent); }
+.upload-run:disabled { opacity: 0.5; cursor: default; }
+
+/* What the question was taken to mean. A failure here is read before the
+   finding, so it is styled to be impossible to skim past. */
+.understood {
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; margin-bottom: 10px; font-size: 12px;
+}
+.understood p { margin: 3px 0; }
+.understood span { color: var(--muted); margin-right: 4px; }
+.understood-question { color: var(--text); }
+.understood-line { color: var(--muted); }
+.understood-headline { font-weight: 600; }
+.understood-ok .understood-headline { color: var(--good); }
+.understood-warn { border-color: var(--poor); background: rgba(248, 81, 73, 0.08); }
+.understood-warn .understood-headline { color: var(--poor); }
+.understood ul { margin: 4px 0 0; padding-left: 18px; }
+.understood li { margin: 2px 0; }
+
+.upload-preview { margin-bottom: 10px; }
+.upload-preview img {
+  width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block;
+}
+.upload-preview small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }

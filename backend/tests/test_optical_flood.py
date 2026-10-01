@@ -350,10 +350,11 @@ def test_an_unknown_sensor_is_a_400():
 def test_adding_cloud_limit_did_not_rekey_the_cache():
     """A new request field changes model_dump(), which is the cache key. Left
     unhandled, every stored analysis would get a new request_id and re-run
-    against Earth Engine quota."""
+    against Earth Engine quota. The only addition to the key is the rule
+    version - which re-keys on purpose, when the rule itself changes."""
     pytest.importorskip("fastapi")
     import main
-    from core import cache
+    from detection import sar
 
     old_request = {
         "region": "kerala", "bbox": None, "point": None, "radius_km": None,
@@ -361,9 +362,24 @@ def test_adding_cloud_limit_did_not_rekey_the_cache():
         "pre_start": None, "pre_end": None, "sensor": "sentinel-1", "scale": 100,
         "generate_report": True, "use_llm": True,
     }
-    assert main.FloodRequest(**old_request).cache_key() == old_request
-    assert (cache.key_for(main.FloodRequest(**old_request).cache_key())
-            == cache.key_for(old_request))
+    assert main.FloodRequest(**old_request).cache_key() == {
+        **old_request, "flood_rule": sar.RULE_VERSION,
+    }
+
+
+def test_a_changed_detection_rule_rekeys_every_flood_result(monkeypatch):
+    """Serving a -20 dB extent as the answer of the scale-aware rule would be
+    a stale number with nothing to show it. A new rule version means new keys,
+    so results are recomputed."""
+    pytest.importorskip("fastapi")
+    import main
+    from detection import sar
+
+    request = main.FloodRequest(region="kerala", post_start="2018-08-01",
+                                post_end="2018-08-31")
+    before = request.cache_key()
+    monkeypatch.setattr(sar, "RULE_VERSION", "some_later_rule")
+    assert request.cache_key() != before
 
 
 def test_a_set_cloud_limit_does_change_the_key():

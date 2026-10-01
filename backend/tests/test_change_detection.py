@@ -450,13 +450,13 @@ def test_a_missing_baseline_is_a_422_that_says_what_would_work():
 def test_adding_method_did_not_rekey_the_cache():
     pytest.importorskip("fastapi")
     import main
-    from core import cache
+    from detection import sar
 
     old = {"region": "kerala", "bbox": None, "point": None, "radius_km": None,
            "polygon": None, "post_start": "2018-08-01", "post_end": "2018-08-31",
            "pre_start": None, "pre_end": None, "sensor": "sentinel-1", "scale": 100,
            "generate_report": True, "use_llm": True}
-    assert cache.key_for(main.FloodRequest(**old).cache_key()) == cache.key_for(old)
+    assert main.FloodRequest(**old).cache_key() == {**old, "flood_rule": sar.RULE_VERSION}
     assert (main.FloodRequest(**old, method="change").cache_key()
             != main.FloodRequest(**old).cache_key())
 
