@@ -1,0 +1,16 @@
+# Never into an image: secrets, local environments, caches, user data.
+**/.env
+**/*.env
+**/credentials
+**/credentials.json
+backend/venv/
+**/__pycache__/
+**/.pytest_cache/
+frontend/node_modules/
+frontend/dist/
+data/
+outputs/
+backend/notebooks/
+backend/results/
+**/*.ipynb
+.git/

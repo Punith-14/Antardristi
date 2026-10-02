@@ -1,0 +1,20 @@
+# docker compose up --build    ->   http://localhost:8000
+services:
+  antardrishti:
+    build: .
+    image: antardrishti:1.0
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    volumes:
+      - antardrishti-data:/app/data
+      # Earth Engine service account: put the key in ./secrets (gitignored),
+      # uncomment this line, and set in backend/.env
+      #   EE_SERVICE_ACCOUNT=...@....iam.gserviceaccount.com
+      #   EE_PRIVATE_KEY_FILE=/run/secrets/ee-key.json
+      # - ./secrets/ee-key.json:/run/secrets/ee-key.json:ro
+    restart: unless-stopped
+
+volumes:
+  antardrishti-data:

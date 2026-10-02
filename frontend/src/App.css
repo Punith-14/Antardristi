@@ -650,3 +650,36 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .hindi-note { font-size: 11px; color: var(--muted); margin: 4px 0; }
 .hindi-note a { color: var(--accent); }
 .hindi-failed { color: var(--moderate); }
+
+/* ------------------------------------------------- sign-in, users, jobs */
+
+.login-page { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.login-card {
+  width: min(380px, 100%); background: var(--panel, #161b22); border: 1px solid var(--line);
+  border-radius: 12px; padding: 28px 26px; display: flex; flex-direction: column; gap: 10px;
+}
+.login-card h1 { margin: 0; font-size: 22px; }
+.login-logo { width: 48px; height: 48px; object-fit: contain; }
+.login-tagline { margin: 0 0 8px; color: var(--muted); font-size: 12.5px; }
+.login-notice { color: var(--moderate); font-size: 12px; margin: 0; }
+.login-foot { color: var(--muted); font-size: 11px; text-align: center; }
+.user-menu { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-right: 10px; }
+.user-menu button {
+  background: transparent; color: var(--accent); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.view-only { font-size: 12px; color: var(--moderate); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; }
+.progress-card { margin-bottom: 12px; font-size: 12.5px; }
+.progress-card ol { margin: 8px 0 6px; padding-left: 18px; color: var(--muted); }
+.progress-card ol li:last-child { color: var(--text); }
+.progress-card small { color: var(--muted); font-size: 11px; }
+.admin-users .user-actions { white-space: nowrap; }
+.admin-users .user-actions button, .add-user button {
+  background: transparent; color: var(--accent); border: 1px solid var(--line); border-radius: 5px;
+  padding: 2px 7px; margin-left: 4px; font: inherit; font-size: 11px; cursor: pointer;
+}
+.admin-users tr.user-disabled td { color: var(--muted); }
+.add-user { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.add-user input, .add-user select { flex: 1 1 140px; }
+.add-user .run { flex: 0 0 auto; width: auto; padding: 6px 14px; }
+.admin-message { font-size: 12px; color: var(--moderate); }

@@ -71,3 +71,13 @@ desktop.ini
 # A district office's boundary file is its own data, kept only so a shape can
 # be picked from it without uploading twice. Never committed.
 data/boundaries/
+
+# Accounts and jobs (core/auth.py, core/jobs.py) - never committed.
+data/app.db
+data/*.db
+
+# Service-account keys for Docker (DEPLOYMENT.md).
+secrets/
+
+# Result cache and OpenStreetMap lookups - regenerated, never committed.
+data/cache/

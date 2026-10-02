@@ -307,6 +307,9 @@ def analyse(content, filename, question="", output_dir=None):
     overlay = draw_overlay(
         image, stats["mask"], Path(output_dir or OUTPUT_DIR) / f"upload_{request_id}.png"
     )
+    # Overlays of uploaded photos are kept for the retention period only.
+    from core import security
+    security.purge_old_files(Path(output_dir or OUTPUT_DIR), patterns=("upload_*.png",))
 
     builder = build_evidence(stats)
     display_name = Path(filename or "upload").name

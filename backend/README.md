@@ -57,7 +57,7 @@ backend/
     fetch_pre_event.py  baselines for notebook 06 (resumable, slow)
     fetch_terrain.py    HAND + slope per chip for notebook 09 (resumable)
   manual_checks/      End-to-end checks a person reads.
-  tests/              The pytest suite (862 at last count). fake_ee.py and
+  tests/              The pytest suite (915 at last count). fake_ee.py and
                       flood_scenario.py run the whole flood path on numpy grids.
   notebooks/          Measurement runs. 05 = optical flood, 06 = change detection,
                       07 = scale, 08 = India, 09 = terrain check.
@@ -167,6 +167,18 @@ Both measured numbers are filled: `VALIDATION` in `detection/optical.py`
 (notebook 05) and `CHANGE_VALIDATION` in `detection/sar.py` (notebook 06), on
 2026-09-30. Tests tie each to the results file its notebook wrote, so they
 cannot be edited by hand or left behind when a threshold changes.
+
+## Production layer (October 2026)
+
+Sign-in with roles (viewer / analyst / admin), background jobs with progress,
+rate limits, CSRF and CORS protection, security headers, upload limits and
+retention, `/health` and `/ready`, structured logs, Earth Engine service-account
+support, and one server for app + API. Modules: `core/settings.py`,
+`core/auth.py`, `core/jobs.py`, `core/progress.py`, `core/security.py`;
+accounts from the command line with `python -m scripts.manage_users`. How to
+run it as a product - laptop, Docker or a cloud host - is in
+[`../DEPLOYMENT.md`](../DEPLOYMENT.md); the settings are listed in
+`.env.example`.
 
 ## Running things
 

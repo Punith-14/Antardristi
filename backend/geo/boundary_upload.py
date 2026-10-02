@@ -173,9 +173,32 @@ def parse_kml(data):
     return items
 
 
+def check_archive(archive):
+    """Refuse a zip that would expand far beyond its size (a "zip bomb").
+
+    The 20 MB upload limit is on the COMPRESSED file: a few hundred kilobytes
+    of zip can unpack to gigabytes and take the server down. The sizes in the
+    zip's own directory are checked before anything is extracted.
+    """
+    from core import settings
+
+    limit = settings.max_unzipped_bytes()
+    total = 0
+    for info in archive.infolist():
+        total += info.file_size
+        if info.file_size > 0 and info.compress_size > 0 and info.file_size / info.compress_size > 1000:
+            raise UnreadableBoundary(
+                f"{info.filename!r} in the zip expands {info.file_size / info.compress_size:,.0f}-fold; "
+                "that is not a boundary file.")
+    if total > limit:
+        raise UnreadableBoundary(
+            f"The zip unpacks to {total / 1e6:,.0f} MB; the limit is {limit / 1024 / 1024:.0f} MB.")
+
+
 def parse_kmz(data):
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            check_archive(archive)
             kml = next((n for n in archive.namelist() if n.lower().endswith(".kml")), None)
             if not kml:
                 raise UnreadableBoundary("The KMZ contains no .kml file.")
@@ -191,6 +214,7 @@ def parse_shapefile_zip(data):
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
         raise UnreadableBoundary(f"Not a valid zip file: {exc}") from exc
+    check_archive(archive)
     names = archive.namelist()
     shp = next((n for n in names if n.lower().endswith(".shp")), None)
     if not shp:
@@ -434,7 +458,12 @@ def request_boundary(parsed, index):
 # -------------------------------------------------------------------- store
 
 def save(parsed):
+    from core import security
+
     STORE.mkdir(parents=True, exist_ok=True)
+    # Kept only long enough to pick a shape: a boundary file is the
+    # uploader's data, not ours to keep.
+    security.purge_old_files(STORE, patterns=("*.json",))
     path = STORE / f"{parsed['file']['sha256']}.json"
     path.write_text(json.dumps(parsed), encoding="utf-8")
     return path

@@ -27,6 +27,26 @@ try:
 except ImportError:
     pass
 
+# The test suite exercises the endpoints directly. Sign-in is tested on its
+# own (tests/test_auth.py), which switches it back on; everywhere else it is
+# off, and nothing touches the real user database or a real SECRET_KEY.
+import os as _os
+import tempfile as _tempfile
+
+_os.environ["AUTH_REQUIRED"] = "false"
+_os.environ["DATABASE_PATH"] = str(Path(_tempfile.mkdtemp(prefix="antardrishti-test-")) / "app.db")
+_os.environ.pop("ADMIN_USERNAME", None)
+_os.environ.pop("ADMIN_PASSWORD", None)
+_os.environ["ANALYSES_PER_HOUR"] = "100000"
+_os.environ["LOG_FORMAT"] = "text"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    from core import security
+    security.ANALYSIS_LIMITER.reset()
+    yield
+
 
 @pytest.fixture(scope="session")
 def contract():

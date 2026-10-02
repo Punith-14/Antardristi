@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import ClassVar
 
@@ -7,8 +8,11 @@ from dotenv import load_dotenv
 # Load .env before importing modules that read environment variables.
 load_dotenv()
 
+import time
+
 from fastapi import FastAPI
 from fastapi import File
+from fastapi import Request
 from fastapi import Form
 from fastapi import HTTPException
 from fastapi import UploadFile
@@ -36,11 +40,17 @@ from geo.regions import REGIONS, get_region_geometry, resolve_region
 
 from core import paths
 from core import earth_engine
+from core import auth
+from core import jobs
+from core import progress
+from core import security
+from core import settings
 
 
 BASE_DIR = paths.PROJECT_ROOT
 
-app = FastAPI(title="Antardrishti Prototype API")
+app = FastAPI(title="Antardrishti API", version="1.0.0")
+security.configure_logging()
 
 
 @app.exception_handler(earth_engine.EarthEngineUnavailable)
@@ -60,16 +70,105 @@ def earth_engine_unavailable(request, exc):
 for _problem in earth_engine.configuration_problems():
     print(f"WARNING: {_problem}. Earth Engine may not start.")
 
+for _problem in settings.problems():
+    print(f"WARNING: {_problem}.")
+
+
+# ------------------------------------------------------- the front door
+#
+# One middleware for everything a request passes on the way in and out, in
+# this order: size limit, sign-in and role, CSRF, quota rate limit, then the
+# endpoint; on the way out, security headers and one log line. An exception
+# nothing else handled becomes a 500 with an incident id - the traceback
+# goes to the log, never to the browser.
+
+def _deny(status, error, message, headers=None):
+    return JSONResponse(status_code=status, headers=headers or {},
+                        content={"detail": {"error": error, "message": message}})
+
+
+def _token_from(request):
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        return header[7:].strip(), "header"
+    cookie = request.cookies.get(auth.COOKIE)
+    return (cookie, "cookie") if cookie else (None, None)
+
+
+@app.middleware("http")
+async def front_door(request: Request, call_next):
+    started = time.monotonic()
+    request_id = security.incident_id()
+    method, path = request.method, request.url.path
+    user = None
+    response = None
+    try:
+        too_big = security.body_too_large(request.headers)
+        if too_big:
+            response = _deny(413, "too_large", too_big)
+        else:
+            token, carrier = _token_from(request)
+            user = auth.read_token(token) if token else None
+            request.state.user = user
+            needed = auth.required_role(method, path)
+            if settings.auth_required() and needed is not None:
+                if user is None:
+                    response = _deny(401, "login_required", "Please sign in.")
+                elif not auth.allows(user, needed):
+                    response = _deny(403, "forbidden",
+                                     f"This needs the {needed} role; you are {user['role']}.")
+                elif (carrier == "cookie" and method not in ("GET", "HEAD", "OPTIONS")
+                      and not request.headers.get(auth.CSRF_HEADER)):
+                    response = _deny(403, "csrf", "Missing the X-Requested-With header.")
+            if response is None and security.spends_quota(method, path):
+                key = user["username"] if user else (request.client.host if request.client else "?")
+                allowed, retry = security.ANALYSIS_LIMITER.allow(key, settings.analyses_per_hour())
+                if not allowed:
+                    response = _deny(429, "rate_limited",
+                                     f"Hourly limit of {settings.analyses_per_hour()} analyses "
+                                     f"reached. Try again in {retry // 60 + 1} minutes.",
+                                     {"Retry-After": str(retry)})
+            if response is None:
+                response = await call_next(request)
+    except Exception as exc:                     # noqa: BLE001 - see above
+        security.log.error("unhandled error", exc_info=exc, extra={"fields": {
+            "incident": request_id, "method": method, "path": path}})
+        response = _deny(500, "internal_error",
+                         f"Something went wrong on the server. Quote incident {request_id}.")
+    security.add_security_headers(response, path)
+    response.headers["X-Request-ID"] = request_id
+    security.event("request", id=request_id, method=method, path=path,
+                   status=response.status_code, ms=round((time.monotonic() - started) * 1000),
+                   user=user["username"] if user else None)
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Only the web app's own origins. "*" with credentials would let any
+    # website call this API from a signed-in browser.
+    allow_origins=settings.cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
+# Upload overlays only. data/ used to be served whole - the cache, raw data
+# and uploaded boundary files with it.
+(BASE_DIR / "outputs").mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=BASE_DIR / "outputs"), name="outputs")
-app.mount("/data", StaticFiles(directory=BASE_DIR / "data"), name="data")
+
+
+@app.on_event("startup")
+def _startup():
+    created = auth.bootstrap_admin()
+    if created:
+        security.event("bootstrap admin created", username=created["username"])
+    jobs.fail_interrupted()
+    if settings.auth_required() and not auth.list_users():
+        print("WARNING: no user accounts exist. Create an admin with\n"
+              "    python -m scripts.manage_users create <username> --role admin\n"
+              "or set ADMIN_USERNAME and ADMIN_PASSWORD in .env and restart.")
 
 
 class QueryRequest(BaseModel):
@@ -198,8 +297,17 @@ def build_analysis_response(
     }
 
 
+FRONTEND_DIST = Path(os.environ.get("FRONTEND_DIST") or (BASE_DIR / "frontend" / "dist"))
+
+
 @app.get("/")
 def home():
+    """The web app when it has been built (one origin, one server), else a
+    short JSON line saying the API is up."""
+    index = FRONTEND_DIST / "index.html"
+    if index.exists():
+        from fastapi.responses import FileResponse
+        return FileResponse(index, media_type="text/html")
     return {"message": "Antardrishti backend is running",
             "earth_engine_ready": earth_engine.is_ready(),
             "configuration_problems": earth_engine.configuration_problems()}
@@ -379,11 +487,16 @@ def _analyze_dates(payload: FloodRequest):
     cache_key = payload.cache_key()
     request_id = cache.key_for(cache_key)
 
+    # Said even when the answer is already stored: found live, a cached job
+    # finished with no steps at all, and the progress card had nothing to say.
+    progress.step("Checking for a stored result")
     cached = cache.get(cache_key)
     if cached:
         cached["request_id"] = request_id
+        progress.step("Found it - no new satellite computation needed")
         return cached
 
+    progress.step("Finding the area")
     geometry, meta = resolve_area_or_fail(payload)
 
     try:
@@ -447,6 +560,7 @@ def _analyze_dates(payload: FloodRequest):
     result["request_id"] = request_id
 
     if payload.generate_report:
+        progress.step("Writing and checking the report")
         report, verification = build_report(result, prefer_llm=payload.use_llm)
         result["report"] = report
         result["verification"] = verification
@@ -501,6 +615,7 @@ def ask(payload: AskRequest):
     rather than being acted on. The decision is returned alongside the result
     so a user can see what was understood.
     """
+    progress.step("Understanding the question")
     decision = routing.route(payload.question, prefer_model=payload.use_llm)
 
     drawn = payload.has_area()
@@ -1341,3 +1456,199 @@ async def analyze_upload(
         return rgb_upload.analyse(content, image.filename or "upload", question)
     except rgb_upload.UnreadableImage as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+
+# ------------------------------------------------------- health and readiness
+
+@app.get("/health")
+def health():
+    """Liveness: the process answers. For a load balancer or uptime check."""
+    return {"status": "ok", "version": app.version}
+
+
+@app.get("/ready")
+def ready():
+    """Readiness: what the service needs, checked without spending quota.
+
+    Earth Engine is started (one cheap call) so a broken credential shows
+    here rather than on a user's first analysis.
+    """
+    checks = {}
+    try:
+        earth_engine.initialize()
+        checks["earth_engine"] = {"ok": True}
+    except earth_engine.EarthEngineUnavailable as exc:
+        checks["earth_engine"] = {"ok": False, "message": str(exc)}
+    checks["groq_api_key"] = {"ok": bool(os.environ.get("GROQ_API_KEY"))}
+    try:
+        checks["accounts"] = {"ok": (not settings.auth_required()) or bool(auth.list_users())}
+    except Exception as exc:                     # noqa: BLE001
+        checks["accounts"] = {"ok": False, "message": str(exc)[:120]}
+    checks["settings"] = {"ok": not settings.problems(), "warnings": settings.problems()}
+    ok = all(c["ok"] for k, c in checks.items() if k != "settings")
+    return JSONResponse(status_code=200 if ok else 503,
+                        content={"status": "ready" if ok else "not_ready", "checks": checks})
+
+
+# ------------------------------------------------------------- sign-in
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def _auth_error(exc):
+    return HTTPException(status_code=exc.status, detail={"error": "auth", "message": exc.message})
+
+
+@app.post("/auth/login")
+def login(payload: LoginRequest, request: Request):
+    """Check the password; set the session cookie and return the token."""
+    try:
+        user = auth.authenticate(payload.username, payload.password)
+    except auth.AuthError as exc:
+        security.event("login failed", username=payload.username[:40],
+                       address=request.client.host if request.client else None)
+        raise _auth_error(exc) from exc
+    token, expires = auth.issue_token(user)
+    security.event("login", username=user["username"], role=user["role"])
+    response = JSONResponse({"user": user, "token": token, "expires": expires})
+    response.set_cookie(
+        auth.COOKIE, token, max_age=settings.session_hours() * 3600, httponly=True,
+        samesite="strict", path="/",
+        secure=request.url.scheme == "https" or os.environ.get("COOKIE_SECURE") == "true")
+    return response
+
+
+@app.post("/auth/logout")
+def logout():
+    response = JSONResponse({"signed_out": True})
+    response.delete_cookie(auth.COOKIE, path="/")
+    return response
+
+
+@app.get("/auth/me")
+def me(request: Request):
+    """Who is signed in (None if nobody), and whether sign-in is required."""
+    return {"user": getattr(request.state, "user", None),
+            "auth_required": settings.auth_required()}
+
+
+# ---------------------------------------------------------- user admin
+
+class NewUser(BaseModel):
+    username: str
+    password: str
+    role: str = "viewer"
+
+
+class UserChange(BaseModel):
+    role: str | None = None
+    active: bool | None = None
+    password: str | None = None
+
+
+def _acting(request):
+    user = getattr(request.state, "user", None)
+    return user["username"] if user else None
+
+
+@app.get("/admin/users")
+def admin_list_users():
+    return {"users": auth.list_users(), "roles": list(auth.ROLES)}
+
+
+@app.post("/admin/users")
+def admin_create_user(payload: NewUser, request: Request):
+    try:
+        user = auth.create_user(payload.username, payload.password, payload.role)
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    security.event("user created", username=user["username"], role=user["role"],
+                   by=_acting(request))
+    return user
+
+
+@app.patch("/admin/users/{username}")
+def admin_update_user(username: str, payload: UserChange, request: Request):
+    try:
+        user = auth.update_user(username, role=payload.role, active=payload.active,
+                                password=payload.password, acting=_acting(request))
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    security.event("user changed", username=username, by=_acting(request),
+                   fields=[k for k, v in payload.model_dump().items() if v is not None])
+    return user
+
+
+@app.delete("/admin/users/{username}")
+def admin_delete_user(username: str, request: Request):
+    try:
+        auth.delete_user(username, acting=_acting(request))
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    security.event("user deleted", username=username, by=_acting(request))
+    return {"deleted": username}
+
+
+@app.post("/admin/maintenance/purge")
+def admin_purge():
+    """Delete uploaded boundaries and photo overlays past the retention period."""
+    from geo import boundary_upload
+    removed = {
+        "boundaries": security.purge_old_files(boundary_upload.STORE, patterns=("*.json",)),
+        "overlays": security.purge_old_files(BASE_DIR / "outputs" / "images",
+                                             patterns=("upload_*.png",)),
+    }
+    return {"removed": removed, "retention_days": settings.upload_retention_days()}
+
+
+# ------------------------------------------------------------- jobs
+
+def _owner(request):
+    user = getattr(request.state, "user", None)
+    return user["username"] if user else "anonymous"
+
+
+@app.post("/jobs/analyze")
+def job_analyze(payload: FloodRequest, request: Request):
+    """Start a flood analysis in the background; poll GET /jobs/{id}."""
+    job_id = jobs.submit("analyze", payload.model_dump(), _owner(request),
+                         lambda: analyze(payload))
+    return {"job_id": job_id, "status_url": f"/jobs/{job_id}"}
+
+
+@app.post("/jobs/ask")
+def job_ask(payload: AskRequest, request: Request):
+    job_id = jobs.submit("ask", payload.model_dump(), _owner(request), lambda: ask(payload))
+    return {"job_id": job_id, "status_url": f"/jobs/{job_id}"}
+
+
+@app.post("/jobs/series")
+def job_series(payload: SeriesRequest, request: Request):
+    job_id = jobs.submit("series", payload.model_dump(), _owner(request),
+                         lambda: analyze_series(payload))
+    return {"job_id": job_id, "status_url": f"/jobs/{job_id}"}
+
+
+@app.get("/jobs")
+def job_list(request: Request):
+    return {"jobs": jobs.recent(getattr(request.state, "user", None))}
+
+
+@app.get("/jobs/{job_id}")
+def job_status(job_id: str, request: Request):
+    user = getattr(request.state, "user", None)
+    job = jobs.get(job_id, user if settings.auth_required() else None)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"No job {job_id}.")
+    return job
+
+
+# ------------------------------------------------------------- the web app
+#
+# Mounted last, so every API route above wins. Present only once the
+# frontend has been built (npm run build); in development Vite serves it.
+if (FRONTEND_DIST / "index.html").exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="web")

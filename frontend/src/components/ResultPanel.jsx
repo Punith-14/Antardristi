@@ -326,12 +326,13 @@ function Districts({ districts }) {
 function Places({ result }) {
   const path = placesPath(result)
   const [block, setBlock] = useState(null)
-  const [loading, setLoading] = useState(false)
+  // Starts loading at mount: the component is keyed by result, so a new
+  // result is a new mount, and no setState is needed inside the effect.
+  const [loading, setLoading] = useState(Boolean(path))
 
   useEffect(() => {
     if (!path) return undefined
     let live = true
-    setLoading(true)
     api.places(path)
       .then((data) => { if (live) setBlock(data) })
       .catch((err) => { if (live) setBlock({ error: err.message }) })

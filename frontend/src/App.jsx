@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { api, runAnalysis, runSeries } from './api'
+import { SIGNED_OUT, api, runAnalysis, runSeries } from './api'
+import { progressLine } from './lib/jobs'
+import { VIEW_ONLY, canRun, isAdmin } from './lib/session'
+import AdminUsers from './components/AdminUsers'
+import Login from './components/Login'
 import { describeFootprint } from './lib/bbox'
 import { DEFAULT_METHOD, availability, findOption, methodOptions, requestFields } from './lib/methods'
 import { boundaryArea, boundaryFileProblem } from './lib/boundary'
@@ -30,7 +34,53 @@ const DEFAULT_FORM = {
   cloudLimit: '',
 }
 
+/**
+ * The session shell: who is signed in decides what is shown. The workspace
+ * mounts only once the server has confirmed a session (or that sign-in is
+ * switched off), so nothing in it ever runs signed out.
+ */
 export default function App() {
+  const [session, setSession] = useState({ loading: true })
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    api.me()
+      .then((body) => setSession({ user: body.user, authRequired: body.auth_required }))
+      .catch((err) => setSession({ user: null, authRequired: true, offline: err.message }))
+    const onSignedOut = () => {
+      setNotice('Your session ended. Please sign in again.')
+      setSession((s) => ({ ...s, user: null }))
+    }
+    window.addEventListener(SIGNED_OUT, onSignedOut)
+    return () => window.removeEventListener(SIGNED_OUT, onSignedOut)
+  }, [])
+
+  if (session.loading) return <div className="login-page"><p className="login-tagline">Loading…</p></div>
+  if (session.authRequired && !session.user) {
+    return (
+      <Login
+        notice={notice || (session.offline ? `Cannot reach the server (${session.offline}).` : '')}
+        onSignedIn={(user) => { setNotice(''); setSession({ user, authRequired: true }) }}
+      />
+    )
+  }
+  return (
+    <Workspace
+      user={session.user}
+      authRequired={session.authRequired}
+      onSignOut={async () => {
+        await api.logout().catch(() => {})
+        setSession({ user: null, authRequired: true })
+      }}
+    />
+  )
+}
+
+function Workspace({ user, authRequired, onSignOut }) {
+  const mayRun = canRun(user, authRequired)
+  const [progress, setProgress] = useState(null)
+  const [showUsers, setShowUsers] = useState(false)
+  const track = useCallback((steps, jobStatus) => setProgress({ steps, status: jobStatus }), [])
   const [catalogue, setCatalogue] = useState(null)
   const [form, setForm] = useState(DEFAULT_FORM)
   const [result, setResult] = useState(null)
@@ -93,11 +143,12 @@ export default function App() {
         floodChoice = requestFields(option, query)
       }
       setStatus('loading')
+      setProgress(null)
       setError('')
       setSelectedZone(null)
 
       try {
-        const data = await runAnalysis({ ...query, area: drawnArea, floodChoice })
+        const data = await runAnalysis({ ...query, area: drawnArea, floodChoice }, track)
         setSeries(null)
         setResult(data)
         setStatus('done')
@@ -121,7 +172,7 @@ export default function App() {
         setError(err.message)
       }
     },
-    [form, drawnArea, catalogue],
+    [form, drawnArea, catalogue, track],
   )
 
   // Every single-result path lands the same way, so history, series state
@@ -149,13 +200,14 @@ export default function App() {
     setError('')
     setAskError(null)
     try {
-      const data = await api.ask({ question, area: drawnArea })
+      setProgress(null)
+      const data = await api.ask({ question, area: drawnArea }, track)
       showResult(data, question.length > 60 ? `${question.slice(0, 57)}…` : question)
     } catch (err) {
       setStatus('error')
       setAskError(err)
     }
-  }, [drawnArea, showResult])
+  }, [drawnArea, showResult, track])
 
   const uploadImage = useCallback(async (file) => {
     setStatus('loading')
@@ -181,8 +233,9 @@ export default function App() {
     setError('')
     setSelectedZone(null)
     try {
+      setProgress(null)
       const data = await runSeries({ ...form, area: drawnArea,
-        floodChoice: requestFields(floodOption, form) })
+        floodChoice: requestFields(floodOption, form) }, track)
       setSeries(data)
       setResult(null)
       setStatus('done')
@@ -190,7 +243,7 @@ export default function App() {
       setStatus('error')
       setError(err.message)
     }
-  }, [form, drawnArea, floodOption])
+  }, [form, drawnArea, floodOption, track])
 
   // One month of the series, as its own full analysis: evidence, zones, map
   // layers and PDF. Fetched by id from the cache, so nothing is recomputed.
@@ -277,6 +330,15 @@ export default function App() {
         <button type="button" className="how-link" onClick={() => setShowHow(true)}>
           How it works
         </button>
+        {user && (
+          <div className="user-menu">
+            <span title={`Signed in as ${user.username}`}>{user.username} · {user.role}</span>
+            {isAdmin(user, authRequired) && (
+              <button type="button" onClick={() => setShowUsers(true)}>Users</button>
+            )}
+            <button type="button" onClick={onSignOut}>Sign out</button>
+          </div>
+        )}
         <div className={`status status-${status}`}>
           {status === 'loading' && 'Running'}
           {status === 'done' && 'Ready'}
@@ -287,7 +349,9 @@ export default function App() {
 
       <main className="layout">
         <aside className="column left">
+          {!mayRun && <p className="view-only">{VIEW_ONLY}</p>}
           <AskPanel
+            disabled={!mayRun}
             onAsk={askQuestion}
             onUpload={uploadImage}
             status={status}
@@ -297,6 +361,7 @@ export default function App() {
           />
 
           <QueryPanel
+            disabled={!mayRun}
             catalogue={catalogue}
             form={form}
             onChange={setForm}
@@ -343,6 +408,15 @@ export default function App() {
         </section>
 
         <aside className="column right">
+          {status === 'loading' && (
+            <div className="panel progress-card" role="status" aria-live="polite">
+              <strong>{progress ? progressLine(progress.steps, progress.status) : 'Starting…'}</strong>
+              {progress?.steps?.length > 0 && (
+                <ol>{progress.steps.map((step) => <li key={step.text}>{step.text}</li>)}</ol>
+              )}
+              <small>Satellite analyses take one to two minutes the first time; repeats are instant.</small>
+            </div>
+          )}
           {series && !result ? (
             <SeriesPanel
               key={series.points?.map((p) => p.request_id || p.label).join('|')}
@@ -374,6 +448,7 @@ export default function App() {
         </aside>
       </main>
       {showHow && <HowItWorks catalogue={catalogue} onClose={() => setShowHow(false)} />}
+      {showUsers && <AdminUsers me={user} onClose={() => setShowUsers(false)} />}
     </div>
   )
 }

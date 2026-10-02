@@ -660,10 +660,95 @@ def check_boundary_fallback():
           (kerala.get("region") or {}).get("boundary_source") == "FAO/GAUL/2015/level1")
 
 
+# ------------------------------------------------------------ signing in
+
+_RAW = {"get": requests.get, "post": requests.post}
+
+
+def sign_in():
+    """Sign the smoke check in when the server requires it.
+
+    Uses SMOKE_USERNAME / SMOKE_PASSWORD from the environment, or asks. Every
+    later request then carries the session as a Bearer token.
+    """
+    import getpass
+    import os
+
+    try:
+        me = _RAW["get"](f"{BASE}/auth/me", timeout=30)
+    except requests.RequestException as exc:
+        raise SystemExit(f"Cannot reach {BASE}: {exc}")
+    if me.status_code == 404:
+        return None                    # an older server with no sign-in at all
+    # 401 is also "sign-in required" (a server from before /auth/me was public).
+    if me.status_code != 401 and not me.json().get("auth_required", False):
+        return None
+    username = os.environ.get("SMOKE_USERNAME") or input("Analyst or admin username: ")
+    password = os.environ.get("SMOKE_PASSWORD") or getpass.getpass("Password: ")
+    response = _RAW["post"](f"{BASE}/auth/login", json={"username": username, "password": password},
+                            timeout=30)
+    if response.status_code != 200:
+        raise SystemExit(f"Sign-in failed: {detail_text(response)}")
+    token = response.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    def with_auth(method):
+        def call(url, **kwargs):
+            kwargs["headers"] = {**headers, **(kwargs.get("headers") or {})}
+            return getattr(requests.Session(), method)(url, **kwargs)
+        return call
+
+    requests.get, requests.post = with_auth("get"), with_auth("post")
+    print(f"signed in as {username} ({response.json()['user']['role']})")
+    return token
+
+
+def check_production_layer(signed_in):
+    print("\n26. the production layer")
+    health = _RAW["get"](f"{BASE}/health", timeout=30)
+    check("/health answers without sign-in", health.status_code == 200, health.text[:80])
+    for name in ("X-Content-Type-Options", "X-Frame-Options", "X-Request-ID"):
+        check(f"header {name}", name in health.headers, health.headers.get(name, ""))
+    ready = requests.get(f"{BASE}/ready", timeout=120)
+    body = ready.json()
+    check("/ready: every dependency ok", ready.status_code == 200,
+          ", ".join(f"{k}={'ok' if v.get('ok') else v.get('message', 'no')}" for k, v in body["checks"].items()))
+    for warning in (body["checks"].get("settings") or {}).get("warnings") or []:
+        print(f"   [note] {warning}")
+    if signed_in:
+        refused = _RAW["get"](f"{BASE}/analyses", timeout=30)
+        check("signed out -> 401", refused.status_code == 401, str(refused.status_code))
+    check("the cache directory is not served",
+          _RAW["get"](f"{BASE}/data/cache/x.json", timeout=30).status_code == 404)
+
+    started = time.time()
+    response = requests.post(f"{BASE}/jobs/analyze", json={
+        "region": "kerala", "post_start": "2018-08-14", "post_end": "2018-08-24",
+        "pre_start": "2018-05-01", "pre_end": "2018-05-31", "sensor": "sentinel-1",
+        "scale": 200, "use_llm": False}, timeout=60)
+    if not check("job accepted at once", response.status_code == 200 and time.time() - started < 10,
+                 f"{time.time() - started:.1f}s"):
+        print("   ", response.text[:300])
+        return
+    job_id = response.json()["job_id"]
+    job = {}
+    while time.time() - started < 600:
+        job = requests.get(f"{BASE}/jobs/{job_id}", timeout=60).json()
+        if job.get("status") in ("done", "failed"):
+            break
+        time.sleep(1)
+    check("job finished", job.get("status") == "done", str(job.get("error") or job.get("status")))
+    check("job reported its steps", len(job.get("steps") or []) >= 2,
+          " -> ".join(s["text"] for s in job.get("steps") or []))
+    check("job result is the analysis", bool((job.get("result") or {}).get("request_id")))
+
+
 if __name__ == "__main__":
+    signed_in = sign_in()
     main()
     check_group_a()
     check_group_b()
     check_group_c()
     check_group_d()
     check_boundary_fallback()
+    check_production_layer(signed_in)

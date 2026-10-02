@@ -1,7 +1,24 @@
 import { areaToRequestPure } from './lib/arearequest'
 import { gisDownloads, pdfPath } from './lib/exportlink'
+import { waitForJob } from './lib/jobs'
 
-const BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
+// Built for production, the app is served by the API itself: same origin, so
+// no base and no CORS. In development Vite serves it on :5173 and the API is
+// on :8000 of the SAME host name - "localhost" and "127.0.0.1" are different
+// sites to a browser, and the sign-in cookie would not be sent across them.
+const BASE = import.meta.env.VITE_API_BASE ??
+  (import.meta.env.PROD ? '' : `${window.location.protocol}//${window.location.hostname}:8000`)
+
+// Every request carries the session cookie and this header. The server
+// refuses a cookie-authenticated change without it - a cross-site form
+// cannot set it, which is what stops CSRF.
+const CSRF = { 'X-Requested-With': 'antardrishti' }
+
+/** Fired when the server says the session has ended, so the app can show sign-in. */
+export const SIGNED_OUT = 'antardrishti:signed-out'
+function signalSignedOut(status) {
+  if (status === 401 && typeof window !== 'undefined') window.dispatchEvent(new Event(SIGNED_OUT))
+}
 
 /** See lib/arearequest.js - kept there so node --test can reach it. */
 export function areaToRequest(area) {
@@ -24,13 +41,15 @@ export function gisLinks(result) {
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...options,
+    headers: { 'Content-Type': 'application/json', ...CSRF, ...(options.headers || {}) },
   })
 
   const body = await response.json().catch(() => ({}))
 
   if (!response.ok) {
+    signalSignedOut(response.status)
     // The backend returns useful detail on 404, 409 and 422 - surface it
     // rather than a bare status code. Newer handlers send an object
     // ({error, message, matches}) instead of a string, and an unhandled object
@@ -60,9 +79,12 @@ async function request(path, options = {}) {
  * multipart boundary into that header.
  */
 async function upload(path, formData) {
-  const response = await fetch(`${BASE}${path}`, { method: 'POST', body: formData })
+  const response = await fetch(`${BASE}${path}`, {
+    method: 'POST', body: formData, credentials: 'include', headers: CSRF,
+  })
   const body = await response.json().catch(() => ({}))
   if (!response.ok) {
+    signalSignedOut(response.status)
     const detail = body.detail
     const error = new Error(
       typeof detail === 'string' ? detail : detail?.message || `Upload failed (${response.status})`,
@@ -106,11 +128,8 @@ export const api = {
    * A plain-language question. A drawn area, if any, is sent with it: the
    * question still decides what to measure and when, the shape decides where.
    */
-  ask: ({ question, area }) =>
-    request('/ask', {
-      method: 'POST',
-      body: JSON.stringify({ question, ...(area ? areaToRequest(area) : {}) }),
-    }),
+  ask: ({ question, area }, onProgress) =>
+    api.runJob('ask', { question, ...(area ? areaToRequest(area) : {}) }, onProgress),
 
   /** Water screening of an uploaded photo. Pixel fractions, never km². */
   uploadImage: (file, question = '') => {
@@ -128,6 +147,26 @@ export const api = {
     request('/analyze/series', { method: 'POST', body: JSON.stringify(payload) }),
 
   cacheStats: () => request('/cache'),
+
+  // ---- sign-in and accounts
+  me: () => request('/auth/me'),
+  login: (username, password) =>
+    request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  users: () => request('/admin/users'),
+  createUser: (user) => request('/admin/users', { method: 'POST', body: JSON.stringify(user) }),
+  updateUser: (username, change) =>
+    request(`/admin/users/${encodeURIComponent(username)}`, { method: 'PATCH', body: JSON.stringify(change) }),
+  deleteUser: (username) => request(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
+
+  // ---- background jobs: start, then poll with progress
+  job: (id) => request(`/jobs/${encodeURIComponent(id)}`),
+  runJob: async (kind, payload, onProgress) => {
+    const { job_id: id } = await request(`/jobs/${kind}`, { method: 'POST', body: JSON.stringify(payload) })
+    return waitForJob(() => api.job(id), {
+      onProgress, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    })
+  },
 
   /** Read an uploaded boundary file: its shapes, checked and simplified. */
   parseBoundary: (file) => {
@@ -163,7 +202,7 @@ export function runAnalysis({
   // {sensor, method?, cloud_limit?} from lib/methods requestFields. Absent
   // means the radar threshold, as before.
   floodChoice,
-}) {
+}, onProgress) {
   const common = {
     // A drawn shape replaces the name rather than joining it. Sending both
     // makes the response harder to read than the question was - and the
@@ -180,12 +219,12 @@ export function runAnalysis({
     // Latest-pass mode: the newest Sentinel-1 image sets the dates, so none
     // are sent - and no baseline, which would describe a period nobody chose.
     if (latest) {
-      return api.flood({
+      return api.runJob('analyze', {
         ...common, post_start: null, post_end: null, pre_start: null, pre_end: null,
         sensor: 'sentinel-1', latest: true,
-      })
+      }, onProgress)
     }
-    return api.flood({ ...common, sensor: 'sentinel-1', ...(floodChoice || {}) })
+    return api.runJob('analyze', { ...common, sensor: 'sentinel-1', ...(floodChoice || {}) }, onProgress)
   }
   return api.surface({ ...common, analysis_type: analysisType })
 }
@@ -197,14 +236,14 @@ export function runAnalysis({
  * it month by month, because a jump between a radar month and an optical
  * month would be the instrument changing.
  */
-export function runSeries({ region, area, postStart, postEnd, scale, floodChoice }) {
-  return api.series({
+export function runSeries({ region, area, postStart, postEnd, scale, floodChoice }, onProgress) {
+  return api.runJob('series', {
     ...(area ? areaToRequest(area) : { region }),
     start: postStart,
     end: postEnd,
     sensor: floodChoice?.sensor || 'sentinel-1',
     scale: scale || 200,
-  })
+  }, onProgress)
 }
 
 export const RELIABILITY = {

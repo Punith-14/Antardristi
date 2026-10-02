@@ -49,6 +49,7 @@ export default function QueryPanel({
   onPreset,
   status,
   error,
+  disabled = false,
 }) {
   const analyses = catalogue?.surface || []
   const flood = catalogue?.flood
@@ -231,13 +232,13 @@ export default function QueryPanel({
         )}
       </details>
 
-      <button className="run" type="submit" disabled={status === 'loading' || (isFlood && !singleCheck.ok)}>
+      <button className="run" type="submit" disabled={disabled || status === 'loading' || (isFlood && !singleCheck.ok)}>
         {status === 'loading' ? 'Analysing…' : 'Run analysis'}
       </button>
 
       {isFlood && onLatest && (
         <div className="series-run">
-          <button type="button" disabled={status === 'loading' || !latestCheck.ok} onClick={onLatest}>
+          <button type="button" disabled={disabled || status === 'loading' || !latestCheck.ok} onClick={onLatest}>
             Latest radar image
           </button>
           <small>
@@ -250,7 +251,7 @@ export default function QueryPanel({
 
       {isFlood && onSeries && (
         <div className="series-run">
-          <button type="button" disabled={status === 'loading' || !seriesCheck.ok} onClick={onSeries}>
+          <button type="button" disabled={disabled || status === 'loading' || !seriesCheck.ok} onClick={onSeries}>
             Run month by month
           </button>
           <small>

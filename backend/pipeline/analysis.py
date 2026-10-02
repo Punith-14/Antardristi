@@ -22,6 +22,7 @@ from detection import optical
 from detection import sar
 from detection import surface
 from geo import zones as zone_extraction
+from core import progress
 from core import scenes as scene_list
 from core.evidence import EvidenceBuilder, Observation, build_provenance, coverage_warning, utc_now
 
@@ -604,7 +605,9 @@ def analyse_flood(
             )
 
     region = region_geometry
+    progress.step("Measuring the area")
     region_area = region.area(maxError=100).getInfo() / 1_000_000
+    progress.step("Choosing satellite images")
 
     sensor, reason, cloud, optical_scenes = choose_sensor(
         region, post_start, post_end, force_sensor
@@ -628,6 +631,7 @@ def analyse_flood(
                                 method=method, pre_start=pre_start, pre_end=pre_end,
                                 terrain_check=terrain_check)
 
+    progress.step("Measuring flood water")
     builder = EvidenceBuilder()
     permanent = permanent_water_mask(region)
 
@@ -720,6 +724,7 @@ def analyse_flood(
         builder.note(note)
 
     # Where, not just how much.
+    progress.step("Outlining flood zones")
     zone_result = {"zones": []}
     if flood_area > 0:
         try:
@@ -797,6 +802,7 @@ def analyse_flood(
     # undercount that summing at the analysis scale would cause).
     people = None
     if flood_area > 0:
+        progress.step("Counting people in the flooded area")
         people = population_model.exposure(
             flood_mask, region, flood_zones, post_start, scale,
             missed_fraction=(1 - validation["recall"]) if validation else None,
@@ -825,6 +831,8 @@ def analyse_flood(
 
     # Which districts. For a state, its districts ranked; for a drawn area,
     # the districts it falls in. Nothing for a single named district.
+    if flood_area > 0:
+        progress.step("Breaking down by district")
     districts = district_model.breakdown(
         flood_mask, valid, region, region_meta, scale, flood_area, event_date=post_start,
     ) if flood_area > 0 else None
@@ -834,6 +842,7 @@ def analyse_flood(
     baseline_mask = None
     baseline_scenes = detection.get("baseline_scenes")
     if pre_start and pre_end:
+        progress.step("Measuring the baseline period")
         try:
             pre_mask, pre_valid, pre_method, pre_scenes = detection["detect_pre"](
                 pre_start, pre_end)

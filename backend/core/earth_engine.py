@@ -74,6 +74,29 @@ def is_network_error(exc):
     return False
 
 
+def service_account_credentials():
+    """Service-account credentials when configured, else None.
+
+    For deployment. A personal `earthengine authenticate` login works on a
+    developer's machine; a server should run as a Google Cloud service
+    account registered for Earth Engine:
+
+        EE_SERVICE_ACCOUNT=name@project.iam.gserviceaccount.com
+        EE_PRIVATE_KEY_FILE=/run/secrets/ee-key.json   (never committed)
+    """
+    account = os.environ.get("EE_SERVICE_ACCOUNT", "").strip()
+    key_file = os.environ.get("EE_PRIVATE_KEY_FILE", "").strip()
+    if not account and not key_file:
+        return None
+    if not (account and key_file):
+        raise EarthEngineNotAuthenticated(
+            "Set both EE_SERVICE_ACCOUNT and EE_PRIVATE_KEY_FILE, or neither.")
+    if not os.path.exists(key_file):
+        raise EarthEngineNotAuthenticated(
+            f"EE_PRIVATE_KEY_FILE points to {key_file}, which does not exist.")
+    return ee.ServiceAccountCredentials(account, key_file)
+
+
 def initialize(force=False):
     """Start Earth Engine once per process.
 
@@ -88,10 +111,16 @@ def initialize(force=False):
 
     project_id = os.environ.get("EE_PROJECT_ID")
     try:
-        if project_id:
+        credentials = service_account_credentials()
+        if credentials is not None:
+            # A server: a Google Cloud service account, not a person's login.
+            ee.Initialize(credentials, project=project_id)
+        elif project_id:
             ee.Initialize(project=project_id)
         else:
             ee.Initialize()
+    except EarthEngineUnavailable:
+        raise
     except Exception as exc:
         if is_network_error(exc):
             raise EarthEngineUnreachable(

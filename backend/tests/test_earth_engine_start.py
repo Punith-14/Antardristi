@@ -104,3 +104,27 @@ def test_the_api_answers_503_with_the_reason(monkeypatch, tmp_path):
     detail = response.json()["detail"]
     assert detail["error"] == "earth_engine_network"
     assert "internet connection" in detail["message"]
+
+
+def test_a_service_account_is_used_when_configured(monkeypatch, tmp_path):
+    key = tmp_path / "key.json"
+    key.write_text("{}")
+    seen = {}
+    monkeypatch.setenv("EE_SERVICE_ACCOUNT", "svc@proj.iam.gserviceaccount.com")
+    monkeypatch.setenv("EE_PRIVATE_KEY_FILE", str(key))
+    monkeypatch.setenv("EE_PROJECT_ID", "proj")
+    monkeypatch.setattr(E.ee, "ServiceAccountCredentials", lambda a, k: ("CREDS", a, k))
+    monkeypatch.setattr(E.ee, "Initialize", lambda *a, **k: seen.update(args=a, kwargs=k))
+    E.initialize()
+    assert seen["args"][0] == ("CREDS", "svc@proj.iam.gserviceaccount.com", str(key))
+    assert seen["kwargs"] == {"project": "proj"}
+
+
+def test_a_half_configured_service_account_says_what_is_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("EE_SERVICE_ACCOUNT", "svc@proj.iam.gserviceaccount.com")
+    monkeypatch.delenv("EE_PRIVATE_KEY_FILE", raising=False)
+    with pytest.raises(E.EarthEngineNotAuthenticated, match="both EE_SERVICE_ACCOUNT"):
+        E.initialize()
+    monkeypatch.setenv("EE_PRIVATE_KEY_FILE", str(tmp_path / "missing.json"))
+    with pytest.raises(E.EarthEngineNotAuthenticated, match="does not exist"):
+        E.initialize()
