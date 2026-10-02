@@ -1,22 +1,11 @@
-import { circleToRequest, toRequest } from './lib/bbox'
-import { polygonToRequest } from './lib/polygon'
+import { areaToRequestPure } from './lib/arearequest'
 import { gisDownloads, pdfPath } from './lib/exportlink'
 
 const BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
 
-/**
- * A drawn shape as the API wants it: one of bbox, point + radius_km, or
- * polygon.
- *
- * Exactly one key comes back. footprint.build refuses a request carrying two
- * shapes rather than picking one, because a caller that sent both could not
- * tell which was measured - so this must never merge them.
- */
+/** See lib/arearequest.js - kept there so node --test can reach it. */
 export function areaToRequest(area) {
-  if (!area) return {}
-  if (area.kind === 'circle') return circleToRequest(area.centre, area.radiusKm)
-  if (area.kind === 'polygon') return polygonToRequest(area.points)
-  return toRequest(area.bbox)
+  return areaToRequestPure(area)
 }
 
 /** Where the PDF of a stored analysis can be downloaded, or null. */
@@ -139,6 +128,22 @@ export const api = {
     request('/analyze/series', { method: 'POST', body: JSON.stringify(payload) }),
 
   cacheStats: () => request('/cache'),
+
+  /** Read an uploaded boundary file: its shapes, checked and simplified. */
+  parseBoundary: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return upload('/boundary/parse', form)
+  },
+
+  /** The finding in Hindi: a checked translation, or the reason there is none. */
+  hindi: (path) => request(path),
+
+  /** Villages and roads in the flood zones, from OpenStreetMap. Cached server-side. */
+  places: (path) => request(path),
+
+  /** One shape from an already-uploaded boundary file, by index. */
+  boundaryFeature: (sha, index) => request(`/boundary/${sha}/${index}`),
 
   /** The scale a flood GeoTIFF will be delivered at, before downloading it. */
   floodPlan: (planPath) => request(planPath),

@@ -16,6 +16,7 @@ from core import earth_engine
 from geo import mapping
 from geo import districts as district_model
 from geo import population as population_model
+from geo import boundaries
 from geo import regions
 from detection import optical
 from detection import sar
@@ -64,11 +65,9 @@ def resolve_geometry(slug_or_name, level="level1"):
     except regions.RegionNotFound:
         return None, None
 
-    collection = (
-        ee.FeatureCollection(entry["dataset"])
-        .filter(ee.Filter.eq("ADM0_NAME", "India"))
-        .filter(ee.Filter.eq(entry["field"], entry["name"]))
-    )
+    boundary_set = entry.get("set") or boundaries.active_key()
+    collection = boundaries.india(entry["dataset"], boundary_set).filter(
+        ee.Filter.eq(entry["field"], entry["name"]))
 
     meta = {
         "slug": entry["name"].lower().replace(" ", "-"),
@@ -76,8 +75,19 @@ def resolve_geometry(slug_or_name, level="level1"):
         "admin_level": entry["level"],
         "state": entry["state"],
         "boundary_source": entry["dataset"],
-        "boundary_vintage": regions.BOUNDARY_VINTAGE,
+        "boundary_vintage": boundaries.vintage(boundary_set),
+        "boundary_set": boundary_set,
     }
+
+    # Found only in the fallback set: said plainly, because this result's
+    # outline comes from a different boundary vintage than the rest.
+    if entry.get("fallback_from"):
+        meta["note"] = (
+            f"{entry['name']!r} is not in FAO GAUL {boundaries.vintage(entry['fallback_from'])}, "
+            f"the boundary set used for other regions, so its outline comes from "
+            f"{entry['dataset']} ({boundaries.vintage(boundary_set)}). District figures for it "
+            "use the same set."
+        )
 
     # What the caller asked for, when GAUL files it under an older name. The
     # response says "Orissa" because that is the boundary actually measured;

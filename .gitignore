@@ -64,3 +64,10 @@ outputs/vectors/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+
+# Uploaded boundaries (geo/boundary_upload.py) --------------------------------
+#
+# A district office's boundary file is its own data, kept only so a shape can
+# be picked from it without uploading twice. Never committed.
+data/boundaries/

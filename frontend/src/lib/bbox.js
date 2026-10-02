@@ -204,6 +204,9 @@ export function describeFootprint(region) {
     return `${shape.radius_km} km around ${lat.toFixed(2)} N, ${lng.toFixed(2)} E`
   }
 
+  // An uploaded boundary is named by the shape the user picked from the file.
+  if (shape.kind === 'boundary') return region.name || 'uploaded boundary'
+
   // A polygon carries a bbox too, so without this branch it would fall through
   // below and be labelled by its bounding box - describing an outline by the
   // rectangle around it, which is not the area that was measured.

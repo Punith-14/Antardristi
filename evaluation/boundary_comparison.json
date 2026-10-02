@@ -1,0 +1,422 @@
+{
+  "generated": "2026-10-02T12:18:33+00:00",
+  "rule": {
+    "min_share_resolved": 0.5,
+    "kerala_area_tolerance": 0.02
+  },
+  "post_2015": {
+    "tested": 30,
+    "2015": 0,
+    "2025": 7,
+    "rows": [
+      {
+        "name": "Ladakh",
+        "parent": "Jammu and Kashmir",
+        "created": 2019,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Leh",
+        "parent": "Jammu and Kashmir",
+        "created": 2019,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Kargil",
+        "parent": "Jammu and Kashmir",
+        "created": 2019,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Bhadradri Kothagudem",
+        "parent": "Khammam",
+        "created": 2016,
+        "2015": null,
+        "2025": "Bhadradri Kothagudem (Telangana)"
+      },
+      {
+        "name": "Jagtial",
+        "parent": "Karimnagar",
+        "created": 2016,
+        "2015": null,
+        "2025": "Jagtial (Telangana)"
+      },
+      {
+        "name": "Jayashankar Bhupalpally",
+        "parent": "Warangal",
+        "created": 2016,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Mancherial",
+        "parent": "Adilabad",
+        "created": 2016,
+        "2015": null,
+        "2025": "Mancherial (Telangana)"
+      },
+      {
+        "name": "Mulugu",
+        "parent": "Jayashankar Bhupalpally",
+        "created": 2019,
+        "2015": null,
+        "2025": "Mulugu (Telangana)"
+      },
+      {
+        "name": "Narayanpet",
+        "parent": "Mahbubnagar",
+        "created": 2019,
+        "2015": null,
+        "2025": "Narayanpet (Telangana)"
+      },
+      {
+        "name": "Balotra",
+        "parent": "Barmer",
+        "created": 2023,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Beawar",
+        "parent": "Ajmer",
+        "created": 2023,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Deeg",
+        "parent": "Bharatpur",
+        "created": 2023,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Kotputli-Behror",
+        "parent": "Jaipur",
+        "created": 2023,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Phalodi",
+        "parent": "Jodhpur",
+        "created": 2023,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Salumbar",
+        "parent": "Udaipur",
+        "created": 2023,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Niwari",
+        "parent": "Tikamgarh",
+        "created": 2018,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Mayiladuthurai",
+        "parent": "Nagapattinam",
+        "created": 2020,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Chengalpattu",
+        "parent": "Kancheepuram",
+        "created": 2019,
+        "2015": null,
+        "2025": "Chengalpattu (Tamil Nadu)"
+      },
+      {
+        "name": "Tenkasi",
+        "parent": "Tirunelveli",
+        "created": 2019,
+        "2015": null,
+        "2025": "Tenkasi (Tamil Nadu)"
+      },
+      {
+        "name": "Kallakurichi",
+        "parent": "Villupuram",
+        "created": 2019,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Hnahthial",
+        "parent": "Lunglei",
+        "created": 2019,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Saitual",
+        "parent": "Aizawl",
+        "created": 2019,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Noklak",
+        "parent": "Tuensang",
+        "created": 2021,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Eastern West Khasi Hills",
+        "parent": "West Khasi Hills",
+        "created": 2021,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Alluri Sitharama Raju",
+        "parent": "Visakhapatnam",
+        "created": 2022,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Anakapalli",
+        "parent": "Visakhapatnam",
+        "created": 2022,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Konaseema",
+        "parent": "East Godavari",
+        "created": 2022,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Sri Sathya Sai",
+        "parent": "Anantapur",
+        "created": 2022,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Pakke-Kessang",
+        "parent": "East Kameng",
+        "created": 2018,
+        "2015": null,
+        "2025": null
+      },
+      {
+        "name": "Shi Yomi",
+        "parent": "West Siang",
+        "created": 2018,
+        "2015": null,
+        "2025": null
+      }
+    ]
+  },
+  "states": {
+    "2015": [
+      "Andaman and Nicobar",
+      "Andhra Pradesh",
+      "Arunachal Pradesh",
+      "Assam",
+      "Bihar",
+      "Chandigarh",
+      "Chhattisgarh",
+      "Dadra and Nagar Haveli",
+      "Daman and Diu",
+      "Delhi",
+      "Goa",
+      "Gujarat",
+      "Haryana",
+      "Himachal Pradesh",
+      "Jharkhand",
+      "Karnataka",
+      "Kerala",
+      "Lakshadweep",
+      "Madhya Pradesh",
+      "Maharashtra",
+      "Manipur",
+      "Meghalaya",
+      "Mizoram",
+      "Nagaland",
+      "Orissa",
+      "Puducherry",
+      "Punjab",
+      "Rajasthan",
+      "Sikkim",
+      "Tamil Nadu",
+      "Tripura",
+      "Uttar Pradesh",
+      "Uttarakhand",
+      "West Bengal"
+    ],
+    "2025": [
+      "Andaman & Nicobar",
+      "Andhra Pradesh",
+      "Arunchal Pradesh",
+      "Assam",
+      "Bihar",
+      "Chandigarh",
+      "Chhattisgarh",
+      "Dadra & Nagar Haveli & Daman & Diu",
+      "Delhi",
+      "Disputed (Madhya Pradesh & Gujarat)",
+      "Disputed (Madhya Pradesh & Rajasthan)",
+      "Disputed (Rajasthan & Gujarat)",
+      "Disputed (West Bengal, Bihar & Jharkhand)",
+      "Goa",
+      "Gujarat",
+      "Haryana",
+      "Himachal Pradesh",
+      "Jharkhand",
+      "Karnataka",
+      "Kerala",
+      "Lakshadweep",
+      "Madhya Pradesh",
+      "Maharashtra",
+      "Manipur",
+      "Meghalaya",
+      "Mizoram",
+      "Nagaland",
+      "Odisha",
+      "Puducherry",
+      "Punjab",
+      "Rajasthan",
+      "Sikkim",
+      "Tamil Nadu",
+      "Telangana",
+      "Tripura",
+      "Uttar Pradesh",
+      "Uttarakhand",
+      "West Bengal"
+    ]
+  },
+  "states_lost": [
+    "Andaman and Nicobar",
+    "Arunachal Pradesh",
+    "Dadra and Nagar Haveli",
+    "Daman and Diu"
+  ],
+  "states_new": [
+    "Andaman & Nicobar",
+    "Arunchal Pradesh",
+    "Dadra & Nagar Haveli & Daman & Diu",
+    "Disputed (Madhya Pradesh & Gujarat)",
+    "Disputed (Madhya Pradesh & Rajasthan)",
+    "Disputed (Rajasthan & Gujarat)",
+    "Disputed (West Bengal, Bihar & Jharkhand)",
+    "Odisha",
+    "Telangana"
+  ],
+  "district_counts": {
+    "2015": 573,
+    "2025": 701
+  },
+  "kerala": {
+    "districts": {
+      "2015": 14,
+      "2025": 14
+    },
+    "area_km2": {
+      "2015": 38001.5,
+      "2025": 39034.2
+    },
+    "area_change": 0.027174716550717133
+  },
+  "renamed_places": [
+    {
+      "name": "Odisha",
+      "renamed": 2011,
+      "2015": "Orissa",
+      "2025": "Odisha"
+    },
+    {
+      "name": "Puducherry",
+      "renamed": 2006,
+      "2015": "Puducherry",
+      "2025": "Puducherry"
+    },
+    {
+      "name": "Uttarakhand",
+      "renamed": 2007,
+      "2015": "Uttarakhand",
+      "2025": "Uttarakhand"
+    },
+    {
+      "name": "Bengaluru",
+      "renamed": 2014,
+      "2015": null,
+      "2025": null
+    },
+    {
+      "name": "Mumbai",
+      "renamed": 1995,
+      "2015": null,
+      "2025": null
+    },
+    {
+      "name": "Chennai",
+      "renamed": 1996,
+      "2015": "Chennai",
+      "2025": "Chennai"
+    },
+    {
+      "name": "Kolkata",
+      "renamed": 2001,
+      "2015": "Kolkata",
+      "2025": "Kolkata"
+    },
+    {
+      "name": "Thiruvananthapuram",
+      "renamed": 1991,
+      "2015": "Thiruvananthapuram",
+      "2025": "Thiruvananthapuram"
+    },
+    {
+      "name": "Prayagraj",
+      "renamed": 2018,
+      "2015": "Allahabad",
+      "2025": "Prayagraj"
+    },
+    {
+      "name": "Mysuru",
+      "renamed": 2014,
+      "2015": "Mysore",
+      "2025": "Mysuru"
+    },
+    {
+      "name": "Belagavi",
+      "renamed": 2014,
+      "2015": "Belgaum",
+      "2025": "Belagavi"
+    },
+    {
+      "name": "Kalaburagi",
+      "renamed": 2014,
+      "2015": "Gulbarga",
+      "2025": "Kalaburagi"
+    },
+    {
+      "name": "Ballari",
+      "renamed": 2014,
+      "2015": "Bellary",
+      "2025": "Ballari"
+    }
+  ],
+  "decision": {
+    "switch": false,
+    "reasons": [
+      "post-2015 districts resolved: 0 -> 7 of 30 (needs more than 0 and at least 50%)",
+      "states or UTs lost under 2025: Andaman and Nicobar, Arunachal Pradesh, Dadra and Nagar Haveli, Daman and Diu",
+      "Kerala changed: districts 14 -> 14, area +2.7%"
+    ]
+  }
+}

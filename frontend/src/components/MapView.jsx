@@ -15,6 +15,7 @@ import {
   validatePolygon,
   withinSnap,
 } from '../lib/polygon'
+import { ACCEPTED, describeBoundary, pickerItems, toLatLngs } from '../lib/boundary'
 import {
   clipInset,
   percentFromPointer,
@@ -53,7 +54,12 @@ export default function MapView({
   onSelectZone,
   drawnArea,
   onDrawArea,
+  onUploadBoundary,
+  boundaryChoices,
+  onPickBoundary,
+  boundaryMessage,
 }) {
+  const fileRef = useRef(null)
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const layersRef = useRef({ overlay: null, baseline: null, terrain: null, zones: null, markers: null })
@@ -521,6 +527,14 @@ export default function MapView({
       return
     }
 
+    if (drawnArea.kind === 'boundary') {
+      // An uploaded outline: drawn, and framed, before anything is run, so
+      // a wrong shape is caught by eye before it costs an analysis.
+      state.rectangle = window.L.polygon(toLatLngs(drawnArea.boundary), style).addTo(map)
+      map.fitBounds(state.rectangle.getBounds(), { padding: [20, 20] })
+      return
+    }
+
     const [west, south, east, north] = drawnArea.bbox
     state.rectangle = window.L
       .rectangle([[south, west], [north, east]], style)
@@ -583,7 +597,9 @@ export default function MapView({
                 ? describeCircle(drawnArea.centre, drawnArea.radiusKm)
                 : drawnArea.kind === 'polygon'
                   ? describePolygon(drawnArea.points)
-                  : describeBbox(drawnArea.bbox)}
+                  : drawnArea.kind === 'boundary'
+                    ? describeBoundary(drawnArea)
+                    : describeBbox(drawnArea.bbox)}
             </span>
             <button type="button" onClick={() => { setDrawError(''); onDrawArea?.(null) }}>
               Use a named region
@@ -622,9 +638,52 @@ export default function MapView({
             >
               {drawing === 'polygon' ? 'Click corners, or cancel' : 'Draw a shape'}
             </button>
+            {onUploadBoundary && (
+              <>
+                <button
+                  type="button"
+                  title="GeoJSON, KML/KMZ or a zipped shapefile, in longitude/latitude"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  Upload boundary
+                </button>
+                <input
+                  ref={fileRef} type="file" hidden accept={ACCEPTED.join(',')}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (file) onUploadBoundary(file)
+                  }}
+                />
+              </>
+            )}
           </>
         )}
       </div>
+
+      {(boundaryChoices || boundaryMessage) && (
+        <div className="boundary-picker">
+          {boundaryMessage && <p className="boundary-message">{boundaryMessage}</p>}
+          {boundaryChoices && (
+            <>
+              <p>
+                <strong>{boundaryChoices.file.name}</strong> has {boundaryChoices.features.length} shapes.
+                Pick the one to analyse:
+              </p>
+              <ul>
+                {pickerItems(boundaryChoices).map((item) => (
+                  <li key={item.index}>
+                    <button type="button" disabled={item.disabled} onClick={() => onPickBoundary?.(item.index)}>
+                      {item.label}
+                    </button>
+                    <small> {item.detail}</small>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
 
       {(drawing || drawError) && (
         <div className={`draw-hint${drawError ? ' draw-hint-error' : ''}`}>

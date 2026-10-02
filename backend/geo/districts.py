@@ -28,9 +28,11 @@ people, which population.py has to sum on its own grid.
 import ee
 
 from core import earth_engine
+from geo import boundaries
 from geo import population as population_model
 
-GAUL_DISTRICTS = "FAO/GAUL/2015/level2"
+# The district layer of whichever boundary set is active (geo/boundaries.py).
+GAUL_DISTRICTS = boundaries.source()
 LOW_COVERAGE = 0.9
 
 # District boundaries and the state boundary are separate GAUL layers and do
@@ -124,11 +126,14 @@ def districts_for(region_meta, region):
     A state: its own districts. A drawn area: every district it touches. A
     single district: nothing to break down.
     """
-    collection = ee.FeatureCollection(GAUL_DISTRICTS).filter(
-        ee.Filter.eq("ADM0_NAME", "India"))
+    # The same boundary set the region itself came from: a GAUL 2025 state
+    # broken down into GAUL 2015 districts would not add up.
+    key = region_meta.get("boundary_set")
+    collection = boundaries.india(boundaries.source(key), key)
     level = region_meta.get("admin_level")
     if level == "state":
-        return collection.filter(ee.Filter.eq("ADM1_NAME", region_meta["name"])), "state_breakdown"
+        return (collection.filter(ee.Filter.eq(boundaries.name_field("state", key), region_meta["name"])),
+                "state_breakdown")
     if level == "custom":
         return collection.filterBounds(region), "drawn_area_overlap"
     return None, None
@@ -156,9 +161,12 @@ def breakdown(flood_mask, valid_mask, region, region_meta, scale, region_flood_k
         )
         stats = stack.reduceRegions(collection=features, reducer=ee.Reducer.sum(),
                                     scale=scale).getInfo()
+        key = region_meta.get("boundary_set")
+        district_field = boundaries.name_field("district", key)
+        state_field = boundaries.name_field("state", key)
         raw = [{
-            "name": f["properties"].get("ADM2_NAME"),
-            "state": f["properties"].get("ADM1_NAME"),
+            "name": f["properties"].get(district_field),
+            "state": f["properties"].get(state_field),
             "flooded_m2": f["properties"].get("flooded_m2"),
             "observed_m2": f["properties"].get("observed_m2"),
             "in_region_m2": f["properties"].get("in_region_m2"),
@@ -166,7 +174,7 @@ def breakdown(flood_mask, valid_mask, region, region_meta, scale, region_flood_k
 
         people = None
         if event_date and region_flood_km2:
-            people = district_people(flood_mask, features, event_date, scale)
+            people = district_people(flood_mask, features, event_date, scale, boundary_set=key)
 
         rows = build_rows(raw, people)
         if kind == "drawn_area_overlap":
@@ -176,22 +184,31 @@ def breakdown(flood_mask, valid_mask, region, region_meta, scale, region_flood_k
             "rows": rows,
             "sum_check": sum_check(rows, region_flood_km2),
             "note": coverage_note(rows),
-            "boundary_source": f"{GAUL_DISTRICTS} (2015)",
+            "boundary_source": f"{boundaries.source(key)} ({boundaries.vintage(key)})",
         }
     except Exception as exc:
         return {"error": f"district breakdown could not be computed: {str(exc)[:160]}"}
 
 
-def district_people(flood_mask, features, event_date, scale):
-    """{district_key: range} from both population models, on their own grids."""
+def district_people(flood_mask, features, event_date, scale, boundary_set=None):
+    """{district_key: range} from both population models, on their own grids.
+
+    `boundary_set` names the boundary fields to read. It was called `key`, and
+    the loop below also used `key` for the population source - so the second
+    overwrote the first, and the district fields were looked up for a
+    boundary set called "ghsl". Found live on Telangana, the first region to
+    reach this path with a boundary set passed in.
+    """
+    district_field = boundaries.name_field("district", boundary_set)
+    state_field = boundaries.name_field("state", boundary_set)
     by_district = {}
-    for key, label, year, image in population_model.sources_for(int(str(event_date)[:4])):
+    for source, label, year, image in population_model.sources_for(int(str(event_date)[:4])):
         flooded = population_model.flooded_population(image, flood_mask, scale)
         rows = population_model.sum_per_feature(
             flooded, features, image.projection()).getInfo()["features"]
         for row in rows:
-            name = district_key(row["properties"].get("ADM2_NAME"),
-                                row["properties"].get("ADM1_NAME"))
-            by_district.setdefault(name, {})[key] = population_model.round_people(
+            name = district_key(row["properties"].get(district_field),
+                                row["properties"].get(state_field))
+            by_district.setdefault(name, {})[source] = population_model.round_people(
                 row["properties"].get("sum") or 0)
     return {name: population_model.as_range(v) for name, v in by_district.items()}

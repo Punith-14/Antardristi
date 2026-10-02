@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, runAnalysis, runSeries } from './api'
 import { describeFootprint } from './lib/bbox'
 import { DEFAULT_METHOD, availability, findOption, methodOptions, requestFields } from './lib/methods'
+import { boundaryArea, boundaryFileProblem } from './lib/boundary'
 import AskPanel from './components/AskPanel'
+import HowItWorks from './components/HowItWorks'
 import MapView from './components/MapView'
 import QueryPanel from './components/QueryPanel'
 import ResultPanel from './components/ResultPanel'
@@ -53,6 +55,11 @@ export default function App() {
   // came from; an upload failure belongs next to the upload.
   const [askError, setAskError] = useState(null)
   const [uploadFailure, setUploadFailure] = useState('')
+  const [showHow, setShowHow] = useState(false)
+  // An uploaded boundary file with several shapes, waiting for a pick; and
+  // the line shown beside the picker (progress or the reason it failed).
+  const [boundaryChoices, setBoundaryChoices] = useState(null)
+  const [boundaryMessage, setBoundaryMessage] = useState('')
 
   useEffect(() => {
     api
@@ -201,6 +208,39 @@ export default function App() {
     }
   }, [])
 
+  const uploadBoundary = useCallback(async (file) => {
+    const problem = boundaryFileProblem(file)
+    setBoundaryChoices(null)
+    if (problem) {
+      setBoundaryMessage(problem)
+      return
+    }
+    setBoundaryMessage(`Reading ${file.name}…`)
+    try {
+      const body = await api.parseBoundary(file)
+      if (body.boundary) {
+        setDrawnArea(boundaryArea(body.boundary))
+        setBoundaryMessage('')
+      } else {
+        setBoundaryChoices(body)
+        setBoundaryMessage('')
+      }
+    } catch (err) {
+      setBoundaryMessage(err.message)
+    }
+  }, [])
+
+  const pickBoundary = useCallback(async (index) => {
+    try {
+      const boundary = await api.boundaryFeature(boundaryChoices.file.sha256, index)
+      setDrawnArea(boundaryArea(boundary))
+      setBoundaryChoices(null)
+      setBoundaryMessage('')
+    } catch (err) {
+      setBoundaryMessage(err.message)
+    }
+  }, [boundaryChoices])
+
   // The newest radar pass over the area, wherever the form's dates point.
   const submitLatest = useCallback(() => submit({ ...form, latest: true }), [form, submit])
 
@@ -234,6 +274,9 @@ export default function App() {
           <h1>Antardrishti</h1>
           <p>Earth observation for India, with every number traceable</p>
         </div>
+        <button type="button" className="how-link" onClick={() => setShowHow(true)}>
+          How it works
+        </button>
         <div className={`status status-${status}`}>
           {status === 'loading' && 'Running'}
           {status === 'done' && 'Ready'}
@@ -292,6 +335,10 @@ export default function App() {
             onSelectZone={setSelectedZone}
             drawnArea={drawnArea}
             onDrawArea={setDrawnArea}
+            onUploadBoundary={uploadBoundary}
+            boundaryChoices={boundaryChoices}
+            onPickBoundary={pickBoundary}
+            boundaryMessage={boundaryMessage}
           />
         </section>
 
@@ -326,6 +373,7 @@ export default function App() {
           )}
         </aside>
       </main>
+      {showHow && <HowItWorks catalogue={catalogue} onClose={() => setShowHow(false)} />}
     </div>
   )
 }

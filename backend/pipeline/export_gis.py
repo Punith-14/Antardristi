@@ -293,6 +293,26 @@ def districts_csv(result):
     return _csv(DISTRICT_COLUMNS, rows)
 
 
+PLACE_COLUMNS = ("zone", "zone_rank", "kind", "name", "local_name", "type_or_class",
+                 "inside_zone", "km_in_zone", "lat", "lon", "osm_id", "request_id")
+
+
+def places_csv(result, places):
+    """One row per village and per road, per zone, with the OSM attribution."""
+    rows = []
+    for zone in places.get("zones") or []:
+        for p in zone["places"]:
+            rows.append((zone["zone"], zone["rank"], "place", p["name"], p.get("name_local"),
+                         p["type"], "yes" if p["inside"] else f"within {places.get('buffer_m')} m",
+                         None, p["lat"], p["lon"], p.get("osm_id"), result.get("request_id")))
+        for r in zone["roads"]:
+            rows.append((zone["zone"], zone["rank"], "road", r.get("ref") or r.get("name"),
+                         r.get("name"), r["class_label"], "crosses zone", r["km"], None, None,
+                         None, result.get("request_id")))
+    text = _csv(PLACE_COLUMNS, rows)
+    return text + f"# {places.get('attribution', '')}; roads cross zones, not 'flooded roads'\n"
+
+
 # ---------------------------------------------------------------- GeoTIFF
 
 def grid_size(bounds, scale_m):

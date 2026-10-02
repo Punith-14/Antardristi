@@ -22,6 +22,8 @@ backend/
   geo/                Where an analysis runs, and how it is drawn.
     regions.py          names, through FAO GAUL 2015
     footprint.py        areas the user draws instead (box, circle, polygon)
+    boundary_upload.py  an official boundary as GeoJSON/KML/zipped shapefile
+    places.py           villages and roads in flood zones (OpenStreetMap)
     indices.py          spectral indices on Sentinel-2
     mapping.py          display hints; "solid" only for validated methods
     zones.py            contiguous regions, vectorised and ranked
@@ -42,6 +44,7 @@ backend/
     report.py           writes the prose, which is then verified
     timeseries.py       one full analysis per month, gaps kept as gaps
     export_pdf.py       the stored response as a PDF; nothing recomputed
+    translate.py        the verified report in Hindi, checked again after
     export_gis.py       GeoJSON, KML, CSV; GeoTIFF of codes (1 flood, 0 dry,
                         2 permanent water, 255 not observed)
 
@@ -54,7 +57,7 @@ backend/
     fetch_pre_event.py  baselines for notebook 06 (resumable, slow)
     fetch_terrain.py    HAND + slope per chip for notebook 09 (resumable)
   manual_checks/      End-to-end checks a person reads.
-  tests/              The pytest suite (800+ at last count). fake_ee.py and
+  tests/              The pytest suite (862 at last count). fake_ee.py and
                       flood_scenario.py run the whole flood path on numpy grids.
   notebooks/          Measurement runs. 05 = optical flood, 06 = change detection,
                       07 = scale, 08 = India, 09 = terrain check.
@@ -119,6 +122,46 @@ on train, lifted test IoU at 200 m from 0.609 to 0.621 and precision from
 zero and held-out Indian recall fell 0.024 (limit 0.02) - it removed real
 Brahmaputra floodplain water. `TERRAIN_RULE` stays None; a test keeps it so
 while `terrain_results.json` says do not ship.
+
+## Added with Group D (October 2026)
+
+| endpoint / feature | what it does |
+|---|---|
+| "How it works" panel (frontend) | five steps, the accuracy table read live from `/analyses`, the limits, a 27-term glossary with Hindi; technical words explain themselves on hover |
+| `POST /boundary/parse` | reads GeoJSON, KML/KMZ or a zipped shapefile; refuses projected (UTM) files, swapped axes, outside India, crossing outlines; simplifies to 3,000 vertices and REPORTS the area change |
+| `GET /boundary/{sha256}/{index}` | one shape from a multi-shape file, without re-uploading |
+| `boundary` in `/analyze`, `/ask`, `/analyze/series` | analyse an uploaded outline; labelled as user-uploaded, never as official |
+| `GET /analyze/{id}/places` | villages (OSM points inside or within 500 m of a zone) and km of main road crossing each zone; cached; caveats attached; kept out of the evidence record |
+| `GET /analyze/{id}/export/places.csv` | the same as a table |
+| `GET /analyze/{id}/report/hi` | the verified English report translated by Groq, then checked: every sentence (so every caveat), every number (Devanagari digits and lakh grouping normalised), every [E#], the fixed terms. Fails -> not shown, reason given |
+| `report.pdf?lang=hi` | adds the Hindi finding beside the English; needs `uharfbuzz` and a Devanagari font (Nirmala UI / Mangal on Windows, or `HINDI_FONT_PATH`); without them the PDF says so instead of printing broken Hindi |
+
+New dependencies: `shapely`, `pyshp`, `uharfbuzz` (all wheels on Windows).
+
+## Boundary set: GAUL 2015 or GAUL 2025
+
+Earth Engine marks FAO GAUL 2015 deprecated (superseded by GAUL 2025, which
+renames the fields to GAUL0/1/2_NAME). `geo/boundaries.py` is now the only
+place either set is named; `BOUNDARY_SET` in `.env` chooses (default 2015).
+Whether to switch is measured, not assumed:
+
+```bash
+python -m scripts.compare_boundaries
+```
+
+It probes both sets with the 30 post-2015 districts and the renamed places,
+compares the state lists and Kerala, and applies a rule written before the
+run (more post-2015 districts resolve and at least half; no state lost;
+Kerala's districts and area unchanged within 2%). Results cached under one
+set are never served under the other (`boundary_set` in the cache key).
+
+Measured result: **stay on 2015** (7 of 30 post-2015 districts in 2025; Kerala
++2.7%; four "Disputed" slices). But GAUL 2015 has no Telangana, so 2025 is a
+**fallback**: tried only for a name 2015 does not know, never for one it does
+(no existing result changes). The result says its outline came from GAUL 2025,
+its district table uses the same set, "Disputed (...)" units are never
+returned, and `BOUNDARY_FALLBACK=none` turns it off.
+Uploaded boundary files are kept in `data/boundaries/`, which is gitignored.
 
 Both measured numbers are filled: `VALIDATION` in `detection/optical.py`
 (notebook 05) and `CHANGE_VALIDATION` in `detection/sar.py` (notebook 06), on

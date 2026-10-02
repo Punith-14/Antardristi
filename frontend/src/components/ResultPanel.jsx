@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { api, assetUrl, citationSegments, gisLinks, pdfUrl } from '../api'
 import {
@@ -22,7 +22,11 @@ import {
   sumCheckLine,
 } from '../lib/insights'
 import { planLine } from '../lib/exportlink'
+import { placesPath, placesSummary, zoneLine } from '../lib/places'
+import { HINDI_LABEL, hindiPath, hindiView, withHindi } from '../lib/hindi'
 import { terrainLine } from '../lib/terrain'
+import { QUANTITY_TERMS } from '../lib/glossary'
+import Term from './Term'
 import { missingScenesLine, sceneCount, sceneWindows, truncationLine } from '../lib/scenes'
 
 const fmt = (value, unit) => {
@@ -33,20 +37,48 @@ const fmt = (value, unit) => {
   return `${value.toLocaleString()} ${unit || ''}`.trim()
 }
 
-function Report({ report, verification, onCite }) {
+function Report({ result, report, verification, onCite }) {
+  const [language, setLanguage] = useState('en')
+  const [hindi, setHindi] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const path = hindiPath(result)
   if (!report?.text) return null
+
+  const showHindi = async () => {
+    setLanguage('hi')
+    if (hindi || !path) return
+    setLoading(true)
+    try {
+      setHindi(hindiView(await api.hindi(path)))
+    } catch (err) {
+      setHindi({ reason: err.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+  const text = language === 'hi' && hindi?.text ? hindi.text : report.text
 
   return (
     <section className="report">
       <div className="report-head">
         <h3>Finding</h3>
+        {path && (
+          <div className="lang-switch" role="group" aria-label="Report language">
+            <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>English</button>
+            <button type="button" className={language === 'hi' ? 'active' : ''} onClick={showHindi} lang="hi">हिन्दी</button>
+          </div>
+        )}
         <span className={`badge ${verification?.passed ? 'ok' : 'warn'}`}>
-          {verification?.passed ? 'Verified' : 'Failed verification'}
+          {verification?.passed ? <Term k="verified">Verified</Term> : 'Failed verification'}
         </span>
       </div>
 
-      <p className="report-text">
-        {citationSegments(report.text).map((segment) =>
+      {language === 'hi' && loading && <p className="hindi-note">अनुवाद हो रहा है… (translating and checking)</p>}
+      {language === 'hi' && hindi?.reason && (
+        <p className="hindi-note hindi-failed">Hindi not shown: {hindi.reason} The English is below.</p>
+      )}
+      <p className="report-text" lang={text === report.text ? 'en' : 'hi'}>
+        {citationSegments(text).map((segment) =>
           segment.kind === 'text' ? (
             <span key={segment.key}>{segment.value}</span>
           ) : (
@@ -60,6 +92,13 @@ function Report({ report, verification, onCite }) {
           ),
         )}
       </p>
+
+      {text !== report.text && (
+        <p className="hindi-note">
+          {HINDI_LABEL}{' '}
+          <a href={withHindi(pdfUrl(result))} download>PDF with Hindi</a>
+        </p>
+      )}
 
       <div className="report-meta">
         <span>{writtenBy(report)}</span>
@@ -101,7 +140,11 @@ function Coverage({ observation, unobserved }) {
         </div>
       )}
       <div className="coverage-meta">
-        {measured && <strong>{(fraction * 100).toFixed(1)}% of the region observed</strong>}
+        {measured && (
+          <strong>
+            {(fraction * 100).toFixed(1)}% of the region <Term k="observable_area">observed</Term>
+          </strong>
+        )}
         <span>{sourceLine(observation)}</span>
       </div>
       {unobserved?.notes?.length > 0 && (
@@ -276,6 +319,61 @@ function Districts({ districts }) {
 }
 
 /**
+ * Villages and roads in the flood zones, looked up in OpenStreetMap when the
+ * result opens. Names, not measurements: shown with their caveats and kept
+ * out of the evidence record.
+ */
+function Places({ result }) {
+  const path = placesPath(result)
+  const [block, setBlock] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!path) return undefined
+    let live = true
+    setLoading(true)
+    api.places(path)
+      .then((data) => { if (live) setBlock(data) })
+      .catch((err) => { if (live) setBlock({ error: err.message }) })
+      .finally(() => { if (live) setLoading(false) })
+    return () => { live = false }
+  }, [path])
+
+  if (!path) return null
+  if (loading && !block) return <p className="places-loading">Looking up villages and roads in OpenStreetMap…</p>
+  if (!block) return null
+  if (block.error) return <p className="places-missing">Village and road names unavailable: {block.error}</p>
+
+  const zones = block.zones.filter((z) => z.places.length || z.roads.length)
+  return (
+    <section className="places">
+      <h3>Villages and roads in the flood zones</h3>
+      <p className="places-summary">{placesSummary(block)}</p>
+      <table className="places-table">
+        <thead><tr><th>Zone</th><th>Villages and towns</th><th>Main roads crossing it</th></tr></thead>
+        <tbody>
+          {zones.map((z) => {
+            const line = zoneLine(z)
+            return (
+              <tr key={z.zone}>
+                <td>{z.zone}</td><td>{line.places}</td><td>{line.roads}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      <small className="places-foot">
+        * within {block.buffer_m} m of the zone, not inside it. {block.attribution}.{' '}
+        <a href={`${api.base}/analyze/${result.request_id}/export/places.csv`} download>CSV</a>
+      </small>
+      <ul className="places-caveats">
+        {block.caveats.map((c) => <li key={c}>{c}</li>)}
+      </ul>
+    </section>
+  )
+}
+
+/**
  * GIS files for analysts: zones as GeoJSON, KML and CSV, districts as CSV,
  * and the flood map as a GeoTIFF of codes. The GeoTIFF is rebuilt on Earth
  * Engine, so its delivery scale is asked for when the menu opens and stated
@@ -406,7 +504,7 @@ function Evidence({ evidence, highlighted }) {
             >
               <td className="ev-id">{item.id}</td>
               <td className="ev-name">
-                {item.quantity.replace(/_/g, ' ')}
+                <Term k={QUANTITY_TERMS[item.quantity]}>{item.quantity.replace(/_/g, ' ')}</Term>
                 {item.method && <small>{item.method}</small>}
               </td>
               <td className="ev-value">{fmt(item.value, item.unit)}</td>
@@ -553,6 +651,8 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
         <>
           {isUpload(result) && <UploadPreview result={result} />}
           <Report
+            key={`report-${result.request_id}`}
+            result={result}
             report={result.report}
             verification={result.verification}
             onCite={onCite}
@@ -575,6 +675,7 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
             selected={selectedZone}
             onSelect={onSelectZone}
           />
+          <Places key={`places-${result.request_id}`} result={result} />
           <Scenes key={result.request_id} result={result} />
         </>
       )}

@@ -234,6 +234,9 @@ class FloodRequest(BaseModel):
     point: list[float] | None = None
     radius_km: float | None = None
     polygon: list[list[float]] | None = None
+    # An uploaded boundary (geo/boundary_upload.py): GeoJSON Polygon or
+    # MultiPolygon plus its `source`. Left out of cache keys while unset.
+    boundary: dict | None = None
 
     # Required unless `latest` is set, in which case the newest Sentinel-1
     # pass decides them.
@@ -266,7 +269,8 @@ class FloodRequest(BaseModel):
     # unset, so an old request and the same request today share a request_id.
     # ClassVar, or pydantic treats it as a field without a type and refuses to
     # build the model - which stops main.py importing at all.
-    LATE_FIELDS: ClassVar[tuple[str, ...]] = ("cloud_limit", "method", "latest", "terrain_check")
+    LATE_FIELDS: ClassVar[tuple[str, ...]] = ("cloud_limit", "method", "latest", "terrain_check",
+                                              "boundary")
 
     def cache_key(self):
         """The request as the cache sees it.
@@ -289,6 +293,13 @@ class FloodRequest(BaseModel):
         terrain = sar.terrain_version()
         if terrain and self.terrain_check is not False:
             key["terrain_rule"] = terrain
+        # A named region resolves to a different outline under another
+        # boundary set, so a result made under one is never served under the
+        # other. Absent for the original 2015 set: nothing cached re-keys.
+        from geo import boundaries
+        tag = boundaries.cache_tag()
+        if tag and self.region:
+            key["boundary_set"] = tag
         return key
     generate_report: bool = True
     use_llm: bool = True
@@ -460,6 +471,9 @@ class AskRequest(BaseModel):
     point: list[float] | None = None
     radius_km: float | None = None
     polygon: list[list[float]] | None = None
+    # An uploaded boundary (geo/boundary_upload.py): GeoJSON Polygon or
+    # MultiPolygon plus its `source`. Left out of cache keys while unset.
+    boundary: dict | None = None
     scale: int = 200
     use_llm: bool = True
     dry_run: bool = False           # route only, do not run the analysis
@@ -471,6 +485,7 @@ class AskRequest(BaseModel):
             "point": self.point,
             "radius_km": self.radius_km,
             "polygon": self.polygon,
+            "boundary": self.boundary,
         }
 
     def has_area(self):
@@ -618,6 +633,9 @@ class SurfaceRequest(BaseModel):
     point: list[float] | None = None
     radius_km: float | None = None
     polygon: list[list[float]] | None = None
+    # An uploaded boundary (geo/boundary_upload.py): GeoJSON Polygon or
+    # MultiPolygon plus its `source`. Left out of cache keys while unset.
+    boundary: dict | None = None
 
     analysis_type: str
     post_start: str
@@ -644,6 +662,7 @@ def resolve_area_or_fail(payload):
             point=payload.point,
             radius_km=payload.radius_km,
             polygon=payload.polygon,
+            boundary=getattr(payload, "boundary", None),
         )
     except footprint.InvalidFootprint as exc:
         raise HTTPException(
@@ -746,6 +765,9 @@ class SeriesRequest(BaseModel):
     point: list[float] | None = None
     radius_km: float | None = None
     polygon: list[list[float]] | None = None
+    # An uploaded boundary (geo/boundary_upload.py): GeoJSON Polygon or
+    # MultiPolygon plus its `source`. Left out of cache keys while unset.
+    boundary: dict | None = None
 
     start: str
     end: str
@@ -789,6 +811,7 @@ def analyze_series(payload: SeriesRequest):
         "point": payload.point,
         "radius_km": payload.radius_km,
         "polygon": payload.polygon,
+        "boundary": payload.boundary,
     }
 
     results = []
@@ -813,7 +836,12 @@ def analyze_surface(payload: SurfaceRequest):
     Same contract as /analyze. Uses Sentinel-2, so cloud limits what can be
     seen; coverage is measured and reported rather than assumed.
     """
-    cache_key = {"kind": "surface", **payload.model_dump()}
+    # A boundary is left out while unset, so adding the field re-keyed nothing.
+    cache_key = {"kind": "surface", **{k: v for k, v in payload.model_dump().items()
+                                       if not (k == "boundary" and v is None)}}
+    from geo import boundaries
+    if boundaries.cache_tag() and payload.region:
+        cache_key["boundary_set"] = boundaries.cache_tag()
     request_id = cache.key_for(cache_key)
 
     cached = cache.get(cache_key)
@@ -897,8 +925,54 @@ def get_analysis(request_id: str):
     return stored
 
 
+def hindi_report(stored, request_id, compute=True):
+    """The Hindi translation of a stored result's verified report.
+
+    Cached by the English text it translates, so a re-generated English
+    report is never shown with an old translation. Only a VERIFIED English
+    report is translated: translating a failed one would carry its errors
+    into a language the verifier cannot read.
+    """
+    import hashlib
+
+    from pipeline import translate
+    from pipeline.report import LLMUnavailable
+
+    report = stored.get("report") or {}
+    english = report.get("text") or ""
+    if not english:
+        return {"available": False, "reason": "This result has no report to translate."}
+    if not (stored.get("verification") or {}).get("passed"):
+        return {"available": False, "reason": (
+            "The English report did not pass verification, so it is not translated.")}
+    key = {"kind": "translation", "language": "hi", "request_id": request_id,
+           "english_sha256": hashlib.sha256(english.encode("utf-8")).hexdigest()}
+    cached = cache.get(key, ttl=None)
+    if cached:
+        cached.pop("_cache", None)
+        return cached
+    if not compute:
+        return None
+    try:
+        result = translate.to_hindi(english)
+    except LLMUnavailable as exc:
+        return {"available": False, "reason": f"Translation service unavailable: {exc}"}
+    result["source"] = "machine translation of the verified English report"
+    if result.get("available"):
+        cache.put(key, result)
+    return result
+
+
+@app.get("/analyze/{request_id}/report/hi")
+def analysis_report_hindi(request_id: str):
+    """The finding in Hindi: a checked translation of the verified English,
+    or the reason it is not available. The English stays authoritative."""
+    stored = _stored_flood_or_404(request_id)
+    return hindi_report(stored, request_id)
+
+
 @app.get("/analyze/{request_id}/report.pdf")
-def analysis_pdf(request_id: str, ask_id: str | None = None):
+def analysis_pdf(request_id: str, ask_id: str | None = None, lang: str = "en"):
     """The stored analysis as a PDF, for the answer that has to leave the app.
 
     Rendered from the stored response for this request_id and nothing else -
@@ -920,6 +994,16 @@ def analysis_pdf(request_id: str, ask_id: str | None = None):
     # analysis cached last week must say how old the image is today.
     if stored.get("acquisition"):
         stored["acquisition"] = latest_mode.freshness(stored["acquisition"])
+
+    if lang == "hi":
+        # The Hindi finding goes beside the English, never instead of it.
+        stored["report_hi"] = hindi_report(stored, request_id)
+
+    # Villages and roads, if they were looked up - never fetched here: the PDF
+    # renders from what is stored, with no network call.
+    places = stored_places(request_id)
+    if places:
+        stored["places"] = places
 
     if ask_id:
         asked = cache.get_by_id(ask_id)
@@ -997,6 +1081,56 @@ def _stored_flood_or_404(request_id):
 def _download(content, media_type, filename):
     return Response(content=content, media_type=media_type, headers={
         "Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def _places_key(request_id):
+    return {"kind": "places", "request_id": request_id}
+
+
+def stored_places(request_id):
+    """The places block computed earlier for a result, or None. No network."""
+    places = cache.get(_places_key(request_id), ttl=None)
+    if places:
+        places.pop("_cache", None)
+    return places
+
+
+@app.get("/analyze/{request_id}/places")
+def analysis_places(request_id: str, refresh: bool = False):
+    """Villages and roads in the flood zones, from OpenStreetMap (geo/places.py).
+
+    Computed from the stored result's zone outlines - no Earth Engine call -
+    and cached beside it. Kept out of the evidence record: a gazetteer is not
+    a measurement. A failure is a 200 with {"error": ...}, never a broken
+    result: the flood figures do not depend on it.
+    """
+    from geo import places as places_lookup
+
+    stored = _stored_flood_or_404(request_id)
+    if not refresh:
+        cached = stored_places(request_id)
+        if cached:
+            return cached
+    try:
+        block = places_lookup.for_result(stored)
+    except Exception as exc:                     # noqa: BLE001 - see the docstring
+        block = {"error": f"Village and road lookup failed: {type(exc).__name__}: {str(exc)[:160]}"}
+    if "error" not in block:
+        cache.put(_places_key(request_id), block)
+    return block
+
+
+@app.get("/analyze/{request_id}/export/places.csv")
+def export_places_csv(request_id: str):
+    """Villages and roads per zone, once looked up."""
+    stored = _stored_flood_or_404(request_id)
+    places = stored_places(request_id)
+    if not places:
+        raise HTTPException(status_code=404, detail=(
+            "Villages and roads have not been looked up for this result yet: "
+            f"GET /analyze/{request_id}/places first."))
+    return _download(export_gis.places_csv(stored, places), "text/csv",
+                     f"{export_gis.file_stem(stored, 'places')}.csv")
 
 
 @app.get("/analyze/{request_id}/export/zones.geojson")
@@ -1132,6 +1266,48 @@ def query(payload: QueryRequest):
         payload.cloud_limit,
         payload.composite_method,
     )
+
+
+@app.post("/boundary/parse")
+async def boundary_parse(file: UploadFile = File(...)):
+    """Read an uploaded boundary file - GeoJSON, KML/KMZ or a zipped shapefile.
+
+    Returns the file's identity (name, SHA-256) and every shape in it, each
+    checked and, if needed, simplified - with the area change that caused.
+    A file with one usable shape also returns the ready `boundary` field for
+    /analyze; with several, the client picks one through
+    GET /boundary/{sha256}/{index}.
+    """
+    from geo import boundary_upload
+
+    data = await file.read()
+    try:
+        parsed = boundary_upload.parse(file.filename, data)
+    except footprint.InvalidFootprint as exc:
+        raise HTTPException(status_code=422, detail={
+            "error": "unreadable_boundary", "message": str(exc)}) from exc
+    boundary_upload.save(parsed)
+    body = boundary_upload.summary(parsed)
+    usable = [f for f in parsed["features"] if f["ok"]]
+    if len(usable) == 1:
+        body["boundary"] = boundary_upload.request_boundary(parsed, usable[0]["index"])
+    return body
+
+
+@app.get("/boundary/{file_sha}/{index}")
+def boundary_feature(file_sha: str, index: int):
+    """One shape from an uploaded file, as the `boundary` field for /analyze."""
+    from geo import boundary_upload
+
+    try:
+        parsed = boundary_upload.load(file_sha)
+        if parsed is None:
+            raise HTTPException(status_code=404, detail=(
+                "That boundary file is no longer stored. Upload it again."))
+        return boundary_upload.request_boundary(parsed, index)
+    except footprint.InvalidFootprint as exc:
+        raise HTTPException(status_code=422, detail={
+            "error": "unreadable_boundary", "message": str(exc)}) from exc
 
 
 @app.post("/analyze-upload")

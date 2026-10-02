@@ -34,6 +34,7 @@ text to confirm the drawing layer does not drop any of it.
 
 import html
 import math
+import os
 from datetime import datetime, timezone
 from io import BytesIO
 
@@ -340,6 +341,83 @@ def _district_view(districts):
 
 PDF_SCENE_LIMIT = 30
 
+# Fonts with Devanagari, in the order tried. Hindi also needs uharfbuzz for
+# shaping: without it reportlab draws the letters unjoined and the vowel
+# signs on the wrong side (measured - "विस्तार" came out as "वस्ि्तार"), so
+# without it no Hindi is put in the PDF at all.
+DEVANAGARI_FONTS = [
+    os.environ.get("HINDI_FONT_PATH") or "",
+    r"C:\Windows\Fonts\Nirmala.ttc",
+    r"C:\Windows\Fonts\Nirmala.ttf",
+    r"C:\Windows\Fonts\NirmalaUI.ttf",
+    r"C:\Windows\Fonts\mangal.ttf",
+    r"C:\Windows\Fonts\Mangal.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+    "/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf",
+    "/usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf",
+]
+_HINDI_FONT = {}
+
+
+def devanagari_font():
+    """Register and return a font name that can shape Hindi, or (None, reason)."""
+    if "name" in _HINDI_FONT:
+        return _HINDI_FONT["name"], _HINDI_FONT.get("reason")
+    try:
+        import uharfbuzz  # noqa: F401
+    except ImportError:
+        _HINDI_FONT.update(name=None, reason="uharfbuzz is not installed (pip install uharfbuzz)")
+        return _HINDI_FONT["name"], _HINDI_FONT["reason"]
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    for path in DEVANAGARI_FONTS:
+        if not path or not os.path.exists(path):
+            continue
+        try:
+            font = TTFont("Devanagari", path, subfontIndex=0, shapable=True)
+            if 0x0915 not in font.face.charToGlyph:          # क
+                continue
+            pdfmetrics.registerFont(font)
+            _HINDI_FONT.update(name="Devanagari", reason=None, path=path)
+            return "Devanagari", None
+        except Exception:                                  # noqa: BLE001 - try the next
+            continue
+    _HINDI_FONT.update(name=None, reason=(
+        "no Devanagari font found - set HINDI_FONT_PATH to a .ttf such as Nirmala UI or Mangal"))
+    return None, _HINDI_FONT["reason"]
+
+PDF_PLACES_PER_ZONE = 12
+
+
+def _places_view(places, limit=PDF_PLACES_PER_ZONE):
+    """Villages and roads per zone, for the PDF - or the reason they are missing."""
+    if not places:
+        return None
+    if places.get("error"):
+        return {"error": places["error"]}
+    rows = []
+    for zone in places.get("zones") or []:
+        names = [p["name"] + ("" if p["inside"] else "*") for p in zone["places"][:limit]]
+        extra = len(zone["places"]) - len(names)
+        roads = [f"{r.get('ref') or r.get('name') or r['class']} ({r['km']} km)"
+                 for r in zone["roads"][:6]]
+        if not names and not roads:
+            continue
+        rows.append({
+            "zone": f"{zone['zone']} (rank {zone['rank']})",
+            "places": ", ".join(names) + (f" and {extra} more" if extra > 0 else "") or "-",
+            "roads": ", ".join(roads) or "-",
+        })
+    return {
+        "rows": rows,
+        "footnote": (f"* within {places.get('buffer_m')} m of the zone, not inside it. "
+                     f"{places.get('attribution')}, looked up {places.get('fetched_at')}."),
+        "caveats": places.get("caveats") or [],
+        "searched": f"{places.get('zones_searched')} of {places.get('zones_found')} zones searched",
+    }
+
+
 
 def _scenes_view(scenes, limit=PDF_SCENE_LIMIT):
     """Scene tables for the PDF: post-event first, then the baseline.
@@ -467,6 +545,7 @@ def outline(result, exported_at=None):
         "nothing_observed": nothing_seen,
         "status": _status(result),
         "finding": report.get("text") or "",
+        "finding_hi": result.get("report_hi"),
         "generator": report.get("generator_model") or report.get("written_by") or (
             "deterministic template" if report.get("fallback_used") else None
         ),
@@ -480,6 +559,7 @@ def outline(result, exported_at=None):
         "population": _population_view(result.get("population")),
         "districts": _district_view(result.get("districts")),
         "scenes": _scenes_view(result.get("scenes")),
+        "places": _places_view(result.get("places")),
         "provenance": {
             "pipeline_version": provenance.get("pipeline_version"),
             "datasets": provenance.get("datasets") or [],
@@ -689,6 +769,27 @@ def render(result, exported_at=None):
     else:
         story.append(Paragraph("No report text was generated.", small))
 
+    # --- the finding in Hindi, beside the English ----------------------------
+    hindi = doc_data.get("finding_hi")
+    if hindi:
+        font, problem = devanagari_font()
+        if hindi.get("available") and font:
+            hi_style = ParagraphStyle("hi", parent=body, fontName=font, fontSize=10.5,
+                                      leading=16, shaping=1)
+            story.append(Paragraph("निष्कर्ष (हिन्दी)",
+                                   ParagraphStyle("hi_h", parent=h2, fontName=font, shaping=1)))
+            # Escaped, but NOT passed through safe(): that maps to the built-in
+            # fonts' code page and turned every Devanagari letter into "?" -
+            # caught by rendering the page and looking at it.
+            story.append(Paragraph(html.escape(hindi["text"], quote=False), hi_style))
+            story.append(Paragraph(
+                "Machine translation of the verified English finding above, checked "
+                "sentence by sentence: every number, every [E#] citation and every "
+                "sentence (so every caveat) kept. The English is authoritative.", small))
+        else:
+            reason = hindi.get("reason") if not hindi.get("available") else problem
+            story.append(Paragraph(para(f"Hindi finding not included: {reason}."), small))
+
     # --- when the images were taken ----------------------------------------
     if doc_data["acquisition"]:
         story.append(Paragraph("When the images were taken", h2))
@@ -758,6 +859,27 @@ def render(result, exported_at=None):
                           repeatRows=1)
             table.setStyle(_grid())
             story.append(table)
+
+    # --- villages and roads ---------------------------------------------------
+    places = doc_data["places"]
+    if places:
+        story.append(Paragraph("Villages and roads in the flood zones", h2))
+        if places.get("error"):
+            story.append(Paragraph(para(places["error"]), small))
+        else:
+            story.append(Paragraph(para(places["searched"] + ". Names from OpenStreetMap - "
+                                        "a gazetteer, not a measurement."), small))
+            if places["rows"]:
+                rows = [[Paragraph(f"<b>{h}</b>", cell) for h in ("Zone", "Villages and towns",
+                                                                    "Main roads crossing it")]]
+                for r in places["rows"]:
+                    rows.append([Paragraph(para(r[k]), cell) for k in ("zone", "places", "roads")])
+                table = Table(rows, colWidths=[26 * mm, 84 * mm, 64 * mm], repeatRows=1)
+                table.setStyle(_grid())
+                story.append(table)
+            story.append(Paragraph(para(places["footnote"]), small))
+            for note in places["caveats"]:
+                story.append(Paragraph("&bull; " + para(note), small))
 
     # --- districts -----------------------------------------------------------
     districts = doc_data["districts"]

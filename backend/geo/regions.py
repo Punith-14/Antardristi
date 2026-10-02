@@ -5,6 +5,7 @@ from functools import lru_cache
 import ee
 
 from core import earth_engine
+from geo import boundaries
 
 
 # ------------------------------------------------------------ boundary vintage
@@ -52,8 +53,10 @@ NAME_ALIASES = {
     "thoothukudi": "tuticorin",
 }
 
-BOUNDARY_SOURCE = "FAO/GAUL/2015/level2"
-BOUNDARY_VINTAGE = "2015"
+# Read at import for the names other modules cite; the boundary set itself
+# lives in geo/boundaries.py (BOUNDARY_SET in .env chooses it).
+BOUNDARY_SOURCE = boundaries.source()
+BOUNDARY_VINTAGE = boundaries.vintage()
 
 
 class RegionAmbiguous(LookupError):
@@ -86,10 +89,11 @@ class RegionNotFound(LookupError):
     def __init__(self, query):
         self.query = query
         super().__init__(
-            f"{query!r} is not in {BOUNDARY_SOURCE}. Boundaries are the "
-            f"{BOUNDARY_VINTAGE} vintage, so districts created since then - "
-            "Ladakh, Telangana's post-2016 districts, Rajasthan's 2023 "
-            "reorganisation - cannot be resolved. Try the parent district or "
+            f"{query!r} is not in {boundaries.source()}. Boundaries are the "
+            f"{boundaries.vintage()} vintage, and the newer FAO GAUL 2025 was "
+            "checked too: most districts created since 2015 - Ladakh, Rajasthan's "
+            "2023 reorganisation, Andhra Pradesh's 2022 districts - are in neither. "
+            "Draw the area or upload its boundary, or try the parent district or "
             "the state."
         )
 
@@ -101,8 +105,7 @@ REGIONS = {
         "mode": "disaster",
         "summary": "Flood-prone coastal and riverine landscape in southern India.",
         "geometry_source": {
-            "dataset": "FAO/GAUL/2015/level1",
-            "name_field": "ADM1_NAME",
+            "level": "state",
             "name": "Kerala",
         },
     },
@@ -112,8 +115,7 @@ REGIONS = {
         "mode": "disaster",
         "summary": "Brahmaputra basin region with recurring monsoon flood exposure.",
         "geometry_source": {
-            "dataset": "FAO/GAUL/2015/level1",
-            "name_field": "ADM1_NAME",
+            "level": "state",
             "name": "Assam",
         },
     },
@@ -123,8 +125,7 @@ REGIONS = {
         "mode": "agriculture",
         "summary": "Agricultural monitoring region suitable for crop and water analysis.",
         "geometry_source": {
-            "dataset": "FAO/GAUL/2015/level1",
-            "name_field": "ADM1_NAME",
+            "level": "state",
             "name": "Punjab",
         },
     },
@@ -212,14 +213,8 @@ def _extract_points(coordinates):
     return points
 
 
-GAUL_LEVELS = (
-    ("FAO/GAUL/2015/level1", "ADM1_NAME", "state"),
-    ("FAO/GAUL/2015/level2", "ADM2_NAME", "district"),
-)
-
-
-@lru_cache(maxsize=1)
-def gaul_name_index():
+@lru_cache(maxsize=2)
+def gaul_name_index(key=None):
     """Every India administrative name GAUL 2015 knows, without the geometry.
 
     Names only. Pulling boundaries just to check a spelling costs megabytes,
@@ -237,31 +232,64 @@ def gaul_name_index():
     """
     _initialize_earth_engine()
 
+    key = key or boundaries.active_key()
+    state_field = boundaries.active(key)["state_field"]
+    fixes = boundaries.NAME_FIXES.get(key, {})
     index = {}
-    for dataset, field, level in GAUL_LEVELS:
-        collection = ee.FeatureCollection(dataset).filter(
-            ee.Filter.eq("ADM0_NAME", "India")
-        )
+    for dataset, field, level in boundaries.levels(key):
+        collection = boundaries.india(dataset, key)
         names = collection.aggregate_array(field).getInfo() or []
-        states = collection.aggregate_array("ADM1_NAME").getInfo() or []
+        states = collection.aggregate_array(state_field).getInfo() or []
 
         for exact, state in zip(names, states):
             if not exact:
                 continue
-            index.setdefault(_normalize(exact), []).append(
+            # A slice GAUL marks as disputed between states is not a place a
+            # user means; leave it out of the index entirely.
+            if (_normalize(exact).startswith(boundaries.DISPUTED_PREFIX)
+                    or _normalize(state).startswith(boundaries.DISPUTED_PREFIX)):
+                continue
+            normalized = _normalize(exact)
+            index.setdefault(fixes.get(normalized, normalized), []).append(
                 {
                     "name": exact,
                     "state": state,
                     "level": level,
                     "dataset": dataset,
                     "field": field,
+                    "set": key,
                 }
             )
 
     return index
 
 
-def lookup(slug_or_name):
+def lookup(slug_or_name, key=None, fallback=True):
+    """Find a place in the active boundary set; if it is not there, in the
+    fallback set (geo/boundaries.py) - and say which one answered.
+
+    The fallback is tried ONLY for a name the active set does not know, so
+    every name that resolved before resolves exactly as before. Ambiguity in
+    the active set is never resolved by looking elsewhere.
+    """
+    try:
+        return _lookup_in(slug_or_name, key)
+    except RegionNotFound as missing:
+        other = boundaries.fallback_key() if (fallback and key is None) else None
+        if not other:
+            raise
+        try:
+            entry = _lookup_in(slug_or_name, other)
+        except RegionNotFound:
+            raise missing from None
+        except RegionAmbiguous:
+            raise
+        except Exception:                 # noqa: BLE001 - a broken fallback is not an answer
+            raise missing from None
+        return {**entry, "fallback_from": boundaries.active_key()}
+
+
+def _lookup_in(slug_or_name, key=None):
     """Find a place in GAUL 2015, or say precisely why it cannot be found.
 
     Returns a single entry dict. Raises RegionAmbiguous when the name belongs
@@ -272,7 +300,9 @@ def lookup(slug_or_name):
     if not raw:
         raise RegionNotFound(raw)
 
-    index = gaul_name_index()
+    # Called without the key when none is given, so the index can still be
+    # replaced by a no-argument stand-in in tests.
+    index = gaul_name_index(key) if key else gaul_name_index()
 
     def decide(entries):
         """One match is an answer. Several is a question for the user."""
@@ -316,20 +346,14 @@ def lookup(slug_or_name):
     raise RegionNotFound(raw)
 
 
-@lru_cache(maxsize=1)
-def _india_admin_regions():
+@lru_cache(maxsize=2)
+def _india_admin_regions(key=None):
     _initialize_earth_engine()
 
     regions = []
-    collections = [
-        ("FAO/GAUL/2015/level1", "ADM1_NAME", "state"),
-        ("FAO/GAUL/2015/level2", "ADM2_NAME", "district"),
-    ]
-
-    for dataset_id, name_field, region_type in collections:
+    for dataset_id, name_field, region_type in boundaries.levels(key):
         features = (
-            ee.FeatureCollection(dataset_id)
-            .filter(ee.Filter.eq("ADM0_NAME", "India"))
+            boundaries.india(dataset_id, key)
             .select([name_field])
             .getInfo()
             .get("features", [])
@@ -419,10 +443,10 @@ def get_region_geometry(region_config):
     geometry_source = region_config.get("geometry_source")
     if geometry_source:
         _initialize_earth_engine()
+        level = geometry_source.get("level", "state")
         return (
-            ee.FeatureCollection(geometry_source["dataset"])
-            .filter(ee.Filter.eq("ADM0_NAME", "India"))
-            .filter(ee.Filter.eq(geometry_source["name_field"], geometry_source["name"]))
+            boundaries.india(boundaries.dataset(level))
+            .filter(ee.Filter.eq(boundaries.name_field(level), geometry_source["name"]))
             .geometry()
         )
 

@@ -248,7 +248,45 @@ def from_polygon(coordinates):
     }
 
 
-def build(bbox=None, point=None, radius_km=None, polygon=None):
+def from_boundary(boundary):
+    """Validate an uploaded boundary (geo/boundary_upload.request_boundary).
+
+    Checked again here although the upload already checked it: the request
+    can be sent by anything, and a browser is not a validator.
+    """
+    from geo import boundary_upload as upload
+
+    if not isinstance(boundary, dict) or boundary.get("type") not in ("Polygon", "MultiPolygon"):
+        raise InvalidFootprint("boundary must be a GeoJSON Polygon or MultiPolygon.")
+    geometry = {"type": boundary["type"], "coordinates": boundary.get("coordinates")}
+    try:
+        if upload.vertex_count(geometry) > upload.MAX_VERTICES:
+            raise InvalidFootprint(
+                f"boundary has more than {upload.MAX_VERTICES} vertices; upload it "
+                "through /boundary/parse, which simplifies it and reports the change.")
+        upload.check_coordinates(geometry)
+        upload.check_valid(geometry)
+    except (TypeError, IndexError, ValueError) as exc:
+        if isinstance(exc, InvalidFootprint):
+            raise
+        raise InvalidFootprint(f"boundary coordinates are malformed: {exc}") from exc
+    area = upload.area_km2(geometry)
+    if area > MAX_AREA_KM2:
+        raise InvalidFootprint(
+            f"boundary covers {area:,.0f} km2, above the {MAX_AREA_KM2:,.0f} km2 limit.")
+    source = boundary.get("source") or {}
+    return {
+        "kind": "boundary",
+        "geometry": geometry,
+        "bbox": upload.bounds(geometry),
+        "approx_area_km2": round(area, 1),
+        "source": {k: source.get(k) for k in (
+            "file", "sha256", "format", "feature", "feature_index", "original_vertices",
+            "vertices", "original_area_km2", "area_km2", "area_change_pct", "simplified")},
+    }
+
+
+def build(bbox=None, point=None, radius_km=None, polygon=None, boundary=None):
     """Whichever shape was supplied. Returns (geometry, meta) or (None, None).
 
     Exactly one shape, or none. Accepting several and silently preferring one
@@ -257,7 +295,7 @@ def build(bbox=None, point=None, radius_km=None, polygon=None):
     supplied = [
         name
         for name, value in (
-            ("bbox", bbox), ("point", point), ("polygon", polygon)
+            ("bbox", bbox), ("point", point), ("polygon", polygon), ("boundary", boundary)
         )
         if value is not None
     ]
@@ -275,6 +313,8 @@ def build(bbox=None, point=None, radius_km=None, polygon=None):
         if radius_km is None:
             raise InvalidFootprint("point needs radius_km.")
         shape = from_point(point, radius_km)
+    elif boundary is not None:
+        shape = from_boundary(boundary)
     else:
         shape = from_polygon(polygon)
 
@@ -305,6 +345,11 @@ def geometry(shape):
         )
     if kind == "polygon":
         return ee.Geometry.Polygon([shape["ring"]], geodesic=False)
+    if kind == "boundary":
+        geometry = shape["geometry"]
+        if geometry["type"] == "Polygon":
+            return ee.Geometry.Polygon(geometry["coordinates"], geodesic=False)
+        return ee.Geometry.MultiPolygon(geometry["coordinates"], geodesic=False)
 
     raise InvalidFootprint(f"unknown footprint kind {kind!r}")
 
@@ -318,6 +363,9 @@ def metadata(shape):
     pointing at a dataset that was not consulted. Anyone reading the response
     can see the footprint was drawn rather than looked up.
     """
+    if shape["kind"] == "boundary":
+        return _boundary_metadata(shape)
+
     label = {
         "bbox": "user-defined rectangle",
         "circle": "user-defined circle",
@@ -336,5 +384,37 @@ def metadata(shape):
             f"This is a {label}, not an administrative boundary. Figures cover "
             "exactly the shape supplied, which may cross district or state "
             "lines and may not contain all of any named place."
+        ),
+    }
+
+
+def _boundary_metadata(shape):
+    """An uploaded boundary: named by the file and shape, never as official.
+
+    The geometry itself is left out of the metadata - it can run to thousands
+    of vertices and is already in the request; the result keeps what
+    identifies it (file, SHA-256, shape name) and what was done to it.
+    """
+    source = shape["source"]
+    feature = source.get("feature") or "uploaded boundary"
+    simplified = (
+        f" It was simplified from {source.get('original_vertices'):,} to "
+        f"{source.get('vertices'):,} vertices for Earth Engine, changing its area by "
+        f"{source.get('area_change_pct')}%."
+        if source.get("simplified") else ""
+    )
+    return {
+        "slug": "custom-boundary",
+        "name": f"{feature} (uploaded boundary)",
+        "admin_level": "custom",
+        "state": None,
+        "boundary_source": (f"user-uploaded file {source.get('file')} "
+                            f"(sha256 {str(source.get('sha256'))[:12]})"),
+        "boundary_vintage": None,
+        "footprint": {k: v for k, v in shape.items() if k != "geometry"},
+        "note": (
+            f"This boundary was uploaded by the user ({source.get('file')}, shape "
+            f"{feature!r}); it has not been checked against any official source. "
+            f"Figures cover exactly this outline.{simplified}"
         ),
     }

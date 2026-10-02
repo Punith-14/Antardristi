@@ -532,8 +532,138 @@ def check_group_c():
     check("report still verified", (on.get("verification") or {}).get("passed") is True)
 
 
+def check_group_d():
+    """Uploaded boundary, villages and roads, and the Hindi report - live."""
+    import io
+    import json as _json
+
+    kerala = {"region": "kerala", "post_start": "2018-08-14", "post_end": "2018-08-24",
+              "pre_start": "2018-05-01", "pre_end": "2018-05-31", "sensor": "sentinel-1",
+              "scale": 200, "use_llm": False}
+
+    print("\n22. uploaded boundary (a Kuttanad outline as GeoJSON)")
+    ring = [[76.30, 9.30], [76.55, 9.30], [76.55, 9.60], [76.30, 9.60], [76.30, 9.30]]
+    doc = {"type": "FeatureCollection", "features": [{"type": "Feature",
+           "properties": {"name": "Kuttanad test outline"},
+           "geometry": {"type": "Polygon", "coordinates": [ring]}}]}
+    response = requests.post(f"{BASE}/boundary/parse", timeout=120, files={
+        "file": ("kuttanad.geojson", io.BytesIO(_json.dumps(doc).encode()), "application/geo+json")})
+    if not check("file parsed", response.status_code == 200, str(response.status_code)):
+        print("   ", response.text[:300])
+    else:
+        boundary = response.json().get("boundary")
+        check("one shape, ready to analyse", bool(boundary),
+              (boundary or {}).get("source", {}).get("feature", ""))
+        body = {k: v for k, v in kerala.items() if k != "region"}
+        response = requests.post(f"{BASE}/analyze", json={**body, "boundary": boundary},
+                                 timeout=900)
+        if check("analysis over the uploaded boundary 200", response.status_code == 200,
+                 str(response.status_code)):
+            result = response.json()
+            region = result.get("region") or {}
+            check("labelled as an uploaded boundary", "(uploaded boundary)" in region.get("name", ""),
+                  region.get("name", ""))
+            check("never called official", "not been checked against any official source"
+                  in region.get("note", ""))
+            districts = result.get("districts") or {}
+            names = [r["name"] for r in districts.get("rows") or []]
+            check("districts it falls in", districts.get("kind") == "drawn_area_overlap"
+                  and "Alappuzha" in names, ", ".join(names[:5]))
+        else:
+            print("   ", response.text[:300])
+    utm = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {},
+           "geometry": {"type": "Polygon", "coordinates": [[[500000, 1040000], [510000, 1040000],
+                                                            [510000, 1050000], [500000, 1040000]]]}}]}
+    response = requests.post(f"{BASE}/boundary/parse", timeout=60, files={
+        "file": ("utm.geojson", io.BytesIO(_json.dumps(utm).encode()), "application/geo+json")})
+    check("a UTM file is refused in words", response.status_code == 422
+          and "metres" in detail_text(response), str(response.status_code))
+
+    response = requests.post(f"{BASE}/analyze", json=kerala, timeout=900)
+    if not check("section 18 result available", response.status_code == 200):
+        return
+    rid = response.json()["request_id"]
+
+    print("\n23. villages and roads in the flood zones (OpenStreetMap)")
+    started = time.time()
+    response = requests.get(f"{BASE}/analyze/{rid}/places", timeout=300)
+    try:
+        places = response.json()
+    except ValueError:
+        check("places endpoint answers in JSON", False,
+              f"HTTP {response.status_code}: {response.text[:200]} - see the uvicorn window for the traceback")
+        places = {"error": "not JSON"}
+    if places.get("error"):
+        print(f"   [note] unavailable: {places['error']}")
+    else:
+        totals = places.get("totals") or {}
+        check("places found", (totals.get("places") or 0) > 0,
+              f"{totals.get('places')} places, {totals.get('by_type')}, {time.time() - started:.0f}s")
+        named = [p["name"] for z in places["zones"] for p in z["places"]][:8]
+        print(f"   [note] e.g. {', '.join(named)}")
+        print(f"   [note] road km by class: {totals.get('road_km_by_class')}")
+        check("caveats attached", len(places.get("caveats") or []) >= 4)
+        evidence = requests.get(f"{BASE}/analyze/{rid}", timeout=60).json()["evidence"]
+        check("kept out of the evidence record",
+              not any("place" in e["quantity"] or "road" in e["quantity"] for e in evidence))
+        csv_text = requests.get(f"{BASE}/analyze/{rid}/export/places.csv", timeout=60).text
+        check("places.csv", csv_text.startswith("zone,zone_rank,kind,name"))
+
+    print("\n24. the finding in Hindi (Groq translation, checked)")
+    started = time.time()
+    hindi = requests.get(f"{BASE}/analyze/{rid}/report/hi", timeout=300).json()
+    if hindi.get("available"):
+        check("translation passed every check", True,
+              f"{hindi.get('attempts')} attempt(s), {time.time() - started:.0f}s, {hindi.get('model')}")
+        print(f"   [note] {hindi['text'][:160]}...")
+    else:
+        check("translation available", False, hindi.get("reason", "")[:200])
+    response = requests.get(f"{BASE}/analyze/{rid}/report.pdf", params={"lang": "hi"}, timeout=300)
+    check("PDF with Hindi 200", response.status_code == 200 and response.content[:4] == b"%PDF",
+          f"{len(response.content) / 1e3:.0f} kB")
+    if response.status_code == 200:
+        import tempfile
+        from pathlib import Path as _Path
+        out = _Path(tempfile.gettempdir()) / "antardrishti_hindi_check.pdf"
+        out.write_bytes(response.content)
+        print(f"   [note] saved to {out} - open it and check the Hindi letters are joined "
+              "correctly (or, if no Devanagari font was found, that it says so)")
+
+
+def check_boundary_fallback():
+    """Telangana - absent from GAUL 2015 - through the GAUL 2025 fallback."""
+    print("\n25. a state GAUL 2015 lacks (Telangana, October 2020 floods)")
+    started = time.time()
+    response = requests.post(f"{BASE}/analyze", json={
+        "region": "telangana", "post_start": "2020-10-13", "post_end": "2020-10-21",
+        "sensor": "sentinel-1", "scale": 200, "use_llm": False}, timeout=900)
+    if not check("200", response.status_code == 200, f"{time.time() - started:.0f}s"):
+        print("   ", response.text[:300])
+        return
+    result = response.json()
+    region = result.get("region") or {}
+    check("outline from GAUL 2025, and said so",
+          region.get("boundary_set") == "2025" and "not in FAO GAUL 2015" in (region.get("note") or ""),
+          region.get("boundary_source", ""))
+    districts = result.get("districts") or {}
+    rows = districts.get("rows") or []
+    check("Telangana's districts, from the same set", districts.get("kind") == "state_breakdown"
+          and len(rows) >= 20 and "2025" in (districts.get("boundary_source") or ""),
+          districts.get("error") or f"{len(rows)} districts, {districts.get('boundary_source')}")
+    check("districts add up to the state", (districts.get("sum_check") or {}).get("within_tolerance"),
+          str(districts.get("sum_check")))
+    check("report verified", (result.get("verification") or {}).get("passed") is True)
+    kerala = requests.post(f"{BASE}/analyze", json={
+        "region": "kerala", "post_start": "2018-08-14", "post_end": "2018-08-24",
+        "sensor": "sentinel-1", "scale": 200, "use_llm": False}, timeout=900).json()
+    check("Kerala unchanged: still GAUL 2015",
+          (kerala.get("region") or {}).get("boundary_source") == "FAO/GAUL/2015/level1")
+
+
 if __name__ == "__main__":
     main()
     check_group_a()
     check_group_b()
     check_group_c()
+    check_group_d()
+    check_boundary_fallback()

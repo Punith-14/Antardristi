@@ -20,6 +20,16 @@ reportlab
 # the version it was trained with, and a test asserts the two agree.
 scikit-learn==1.9.1
 
+# Uploaded boundaries and place names (geo/boundary_upload.py, geo/places.py).
+# Both install as wheels on Windows - no GDAL needed.
+shapely
+pyshp
+
+# Hindi in the PDF (pipeline/export_pdf.py). reportlab only joins Devanagari
+# letters correctly with HarfBuzz shaping; without it the Hindi is left out of
+# the PDF rather than printed broken. Wheels exist for Windows.
+uharfbuzz
+
 # Testing
 pytest
 requests

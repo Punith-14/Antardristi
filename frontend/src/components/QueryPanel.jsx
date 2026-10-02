@@ -2,6 +2,7 @@ import { RELIABILITY } from '../api'
 import { periodLabel } from '../lib/swipe'
 import { accuracyLine, availability, findOption, limitsLine, methodOptions } from '../lib/methods'
 import { effectiveOption, terrainAvailable } from '../lib/terrain'
+import Term from './Term'
 
 const PRESETS = [
   {
@@ -115,6 +116,10 @@ export default function QueryPanel({
           <div className={`reliability reliability-${shown.validation ? 'moderate' : 'unvalidated'}`}>
             <strong>{shown.validation ? 'Measured' : 'Not validated'}</strong>
             <span>{accuracyLine(shown)}</span>
+            <small className="term-legend">
+              <Term k="iou">IoU</Term> · <Term k="precision">precision</Term> ·{' '}
+              <Term k="recall">recall</Term> - hover for what each means
+            </small>
             {shown.rule && <p className="method-rule">Rule: {shown.rule}.</p>}
             {option.caveat && <p>{option.caveat}</p>}
             {limitsLine(option) && <p className="method-limits">{limitsLine(option)}</p>}
