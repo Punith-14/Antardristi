@@ -222,8 +222,12 @@ def _mask_clouds(image):
     return image.updateMask(keep)
 
 
-def composite(region, start_date, end_date, cloud_limit=40):
-    """Median composite, plus the scene counts needed for honest reporting."""
+def composite(region, start_date, end_date, cloud_limit=40, return_collection=False):
+    """Median composite, plus the scene counts needed for honest reporting.
+
+    return_collection=True adds the filtered collection the median was built
+    from, so the caller can list exactly those scenes (core/scenes.py).
+    """
     unfiltered = (
         ee.ImageCollection(S2).filterBounds(region).filterDate(start_date, end_date)
     )
@@ -240,6 +244,8 @@ def composite(region, start_date, end_date, cloud_limit=40):
             start_date, end_date, counts["available"], cloud_limit
         )
 
+    if return_collection:
+        return usable.median().clip(region), counts, usable
     return usable.median().clip(region), counts
 
 

@@ -186,6 +186,14 @@ def render_template_report(payload):
             f"[{permanent['id']}]."
         )
 
+    terrain = _find(evidence, "water_excluded_by_terrain")
+    if terrain:
+        sentences.append(
+            f"Dark ground too high above the nearest drainage or too steep to hold "
+            f"flood water, totalling {_fmt(terrain['value'], terrain['unit'])}, was "
+            f"not counted [{terrain['id']}]."
+        )
+
     # Name what actually produced the number. The classifier uses both sensors,
     # so "Measured using Sentinel-2 optical" was wrong on every classified
     # result - and the provenance block said otherwise two lines later.

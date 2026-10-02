@@ -1,5 +1,7 @@
 import { RELIABILITY } from '../api'
 import { periodLabel } from '../lib/swipe'
+import { accuracyLine, availability, findOption, limitsLine, methodOptions } from '../lib/methods'
+import { effectiveOption, terrainAvailable } from '../lib/terrain'
 
 const PRESETS = [
   {
@@ -49,15 +51,20 @@ export default function QueryPanel({
 }) {
   const analyses = catalogue?.surface || []
   const flood = catalogue?.flood
-  const selected =
-    form.analysisType === 'flood_extent'
-      ? {
-          reliability: 'moderate',
-          iou: flood?.validation?.iou,
-          caveat:
-            'Sentinel-1 radar sees through cloud, which is why this is the flood sensor.',
-        }
-      : analyses.find((a) => a.type === form.analysisType)
+  const isFlood = form.analysisType === 'flood_extent'
+  const options = methodOptions(catalogue)
+  const option = findOption(options, form.floodMethod)
+  // What will actually run - with the terrain check, if it is on - so the
+  // accuracy shown is the one the result will quote.
+  const shown = effectiveOption(option, catalogue, form)
+  // Shown beside the buttons they disable, so an option that cannot run says
+  // why instead of quietly doing nothing.
+  const singleCheck = availability(option, form, 'single')
+  const latestCheck = availability(option, form, 'latest')
+  const seriesCheck = availability(option, form, 'series')
+  const selected = isFlood
+    ? null
+    : analyses.find((a) => a.type === form.analysisType)
 
   const set = (key) => (event) => onChange({ ...form, [key]: event.target.value })
 
@@ -79,7 +86,7 @@ export default function QueryPanel({
         <select value={form.analysisType} onChange={set('analysisType')}>
           {flood && (
             <option value="flood_extent">
-              Flood extent — validated, IoU {flood.validation.iou} at 200 m
+              Flood extent — measured; accuracy by method below
             </option>
           )}
           {analyses.map((item) => (
@@ -92,6 +99,61 @@ export default function QueryPanel({
           ))}
         </select>
       </label>
+
+      {isFlood && (
+        <div className="method-choice">
+          <label className="field">
+            <span>Sensor and method</span>
+            <select value={option.key} onChange={set('floodMethod')}>
+              {options.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}{o.validation?.iou != null ? ` — IoU ${o.validation.iou}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className={`reliability reliability-${shown.validation ? 'moderate' : 'unvalidated'}`}>
+            <strong>{shown.validation ? 'Measured' : 'Not validated'}</strong>
+            <span>{accuracyLine(shown)}</span>
+            {shown.rule && <p className="method-rule">Rule: {shown.rule}.</p>}
+            {option.caveat && <p>{option.caveat}</p>}
+            {limitsLine(option) && <p className="method-limits">{limitsLine(option)}</p>}
+          </div>
+          {option.sensor === 'sentinel-2' && (
+            <label className="field">
+              <span>Cloud limit (% per scene)</span>
+              <input
+                type="number" min="1" max="100" step="1"
+                value={form.cloudLimit ?? ''}
+                placeholder={String(option.default_cloud_limit ?? 40)}
+                onChange={set('cloudLimit')}
+              />
+              <small>
+                Scenes cloudier than this are left out. Raising it lets in more
+                scenes and more cloud; cloudy pixels are always counted as
+                unobserved, never as dry.
+              </small>
+            </label>
+          )}
+          {terrainAvailable(catalogue, option) && (
+            <label className="terrain-toggle">
+              <input
+                type="checkbox"
+                checked={form.terrainCheck !== false}
+                onChange={(event) => onChange({ ...form, terrainCheck: event.target.checked })}
+              />
+              <span>
+                Terrain check: do not count dark ground {flood.terrain.text}.
+                <small>
+                  Without it: IoU {option.validation?.iou}. The ground it removes is
+                  still reported and shown on the map.
+                </small>
+              </span>
+            </label>
+          )}
+          {!singleCheck.ok && <p className="method-blocked">{singleCheck.reason}</p>}
+        </div>
+      )}
 
       {selected && (
         <div className={`reliability reliability-${selected.reliability}`}>
@@ -164,31 +226,32 @@ export default function QueryPanel({
         )}
       </details>
 
-      <button className="run" type="submit" disabled={status === 'loading'}>
+      <button className="run" type="submit" disabled={status === 'loading' || (isFlood && !singleCheck.ok)}>
         {status === 'loading' ? 'Analysing…' : 'Run analysis'}
       </button>
 
-      {form.analysisType === 'flood_extent' && onLatest && (
+      {isFlood && onLatest && (
         <div className="series-run">
-          <button type="button" disabled={status === 'loading'} onClick={onLatest}>
+          <button type="button" disabled={status === 'loading' || !latestCheck.ok} onClick={onLatest}>
             Latest radar image
           </button>
           <small>
-            Ignores the dates above and analyses the newest Sentinel-1 pass over
-            the area. The result says how old that image is.
+            {latestCheck.ok
+              ? 'Ignores the dates above and analyses the newest Sentinel-1 pass over the area. The result says how old that image is.'
+              : latestCheck.reason}
           </small>
         </div>
       )}
 
-      {form.analysisType === 'flood_extent' && onSeries && (
+      {isFlood && onSeries && (
         <div className="series-run">
-          <button type="button" disabled={status === 'loading'} onClick={onSeries}>
+          <button type="button" disabled={status === 'loading' || !seriesCheck.ok} onClick={onSeries}>
             Run month by month
           </button>
           <small>
-            One full analysis per calendar month from From to To, up to 12.
-            Slow the first time; each month is cached after that. Months with
-            no imagery show as gaps, never as zero.
+            {seriesCheck.ok
+              ? `One full analysis per calendar month from From to To, up to 12, all with ${option.sensor === 'sentinel-2' ? 'Sentinel-2' : 'Sentinel-1'}. Slow the first time; each month is cached after that. Months with no imagery show as gaps, never as zero.`
+              : seriesCheck.reason}
           </small>
         </div>
       )}

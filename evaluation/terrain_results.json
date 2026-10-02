@@ -1,0 +1,344 @@
+{
+  "protocol": "thresholds chosen on train at 200 m; scored on test/valid/bolivia; decision rule fixed before the run",
+  "decision_rule": {
+    "test_iou_must_rise": true,
+    "gain_ci_must_exclude_zero": true,
+    "india_recall_tolerance": 0.02
+  },
+  "chips_with_terrain": 440,
+  "chips_without_terrain": 0,
+  "source": "hand_merit",
+  "choice": {
+    "max_hand_m": 10.0,
+    "max_slope_deg": null
+  },
+  "results": {
+    "test 100 m": {
+      "before": {
+        "iou": 0.5695091559215516,
+        "precision": 0.8076213890596189,
+        "recall": 0.6588943211733734,
+        "chips": 88
+      },
+      "after": {
+        "iou": 0.5794044202601468,
+        "precision": 0.8427843434891034,
+        "recall": 0.6496176507458944,
+        "chips": 88
+      },
+      "removed": {
+        "removed_dry_px": 856,
+        "removed_water_px": 222,
+        "share_dry": 0.7940630797773655
+      }
+    },
+    "test 200 m": {
+      "before": {
+        "iou": 0.6091362880048404,
+        "precision": 0.8071757867308078,
+        "recall": 0.7128695344308728,
+        "chips": 88
+      },
+      "after": {
+        "iou": 0.6209753047827447,
+        "precision": 0.8413807708598051,
+        "recall": 0.7033103204106922,
+        "chips": 88
+      },
+      "removed": {
+        "removed_dry_px": 213,
+        "removed_water_px": 54,
+        "share_dry": 0.797752808988764
+      }
+    },
+    "valid 100 m": {
+      "before": {
+        "iou": 0.564497623340436,
+        "precision": 0.807077157419884,
+        "recall": 0.6525508028989626,
+        "chips": 86
+      },
+      "after": {
+        "iou": 0.5676738410596026,
+        "precision": 0.8181221665473634,
+        "recall": 0.6496613140069158,
+        "chips": 86
+      },
+      "removed": {
+        "removed_dry_px": 244,
+        "removed_water_px": 61,
+        "share_dry": 0.8
+      }
+    },
+    "valid 200 m": {
+      "before": {
+        "iou": 0.5938365650969529,
+        "precision": 0.8012146694697501,
+        "recall": 0.6964467005076143,
+        "chips": 86
+      },
+      "after": {
+        "iou": 0.5972440258154544,
+        "precision": 0.8090737240075614,
+        "recall": 0.6952284263959391,
+        "chips": 86
+      },
+      "removed": {
+        "removed_dry_px": 43,
+        "removed_water_px": 6,
+        "share_dry": 0.8775510204081632
+      }
+    },
+    "bolivia 100 m": {
+      "before": {
+        "iou": 0.681573855084928,
+        "precision": 0.9191069875326181,
+        "recall": 0.7250686184812443,
+        "chips": 15
+      },
+      "after": {
+        "iou": 0.681573855084928,
+        "precision": 0.9191069875326181,
+        "recall": 0.7250686184812443,
+        "chips": 15
+      },
+      "removed": {
+        "removed_dry_px": 0,
+        "removed_water_px": 0,
+        "share_dry": null
+      }
+    },
+    "bolivia 200 m": {
+      "before": {
+        "iou": 0.7175295186194369,
+        "precision": 0.9132947976878613,
+        "recall": 0.7699805068226121,
+        "chips": 15
+      },
+      "after": {
+        "iou": 0.7175295186194369,
+        "precision": 0.9132947976878613,
+        "recall": 0.7699805068226121,
+        "chips": 15
+      },
+      "removed": {
+        "removed_dry_px": 0,
+        "removed_water_px": 0,
+        "share_dry": null
+      }
+    },
+    "test 10 m": {
+      "before": {
+        "iou": 0.5151369813891777,
+        "precision": 0.7949288220724735,
+        "recall": 0.5940863550111578,
+        "chips": 88
+      },
+      "after": {
+        "iou": 0.5206449131750678,
+        "precision": 0.8295582300232034,
+        "recall": 0.5830108460697908,
+        "chips": 88
+      }
+    }
+  },
+  "gain_ci95": {
+    "test 100 m": [
+      -0.008545939160214355,
+      0.042513278766479985
+    ],
+    "test 200 m": [
+      -0.009696682949824426,
+      0.05061220548042444
+    ],
+    "valid 100 m": [
+      -0.0006934746568469785,
+      0.008604141799393561
+    ],
+    "valid 200 m": [
+      0.00040681553324601103,
+      0.008111053142551542
+    ],
+    "bolivia 100 m": [
+      0.0,
+      0.0
+    ],
+    "bolivia 200 m": [
+      0.0,
+      0.0
+    ],
+    "test 10 m": [
+      -0.008459740839295472,
+      0.02666730220241849
+    ]
+  },
+  "per_event_200m": {
+    "before": {
+      "Bolivia": {
+        "iou": 0.7175295186194369,
+        "precision": 0.9132947976878613,
+        "recall": 0.7699805068226121,
+        "chips": 15
+      },
+      "Ghana": {
+        "iou": 0.45182724252491696,
+        "precision": 0.8133971291866029,
+        "recall": 0.5040770941438102,
+        "chips": 48
+      },
+      "India": {
+        "iou": 0.6281697905181919,
+        "precision": 0.8795831725202624,
+        "recall": 0.6872738238841978,
+        "chips": 68
+      },
+      "Mekong": {
+        "iou": 0.8345562130177515,
+        "precision": 0.990171300196574,
+        "recall": 0.841527446300716,
+        "chips": 30
+      },
+      "Nigeria": {
+        "iou": 0.6693514200932599,
+        "precision": 0.9734895191122072,
+        "recall": 0.6817789291882557,
+        "chips": 18
+      },
+      "Pakistan": {
+        "iou": 0.23981640849110727,
+        "precision": 0.324031007751938,
+        "recall": 0.4799081515499426,
+        "chips": 28
+      },
+      "Paraguay": {
+        "iou": 0.47263397947548463,
+        "precision": 0.7284710017574693,
+        "recall": 0.5737024221453287,
+        "chips": 66
+      },
+      "Somalia": {
+        "iou": 0.1626842907981698,
+        "precision": 0.2172437202987101,
+        "recall": 0.3931203931203931,
+        "chips": 26
+      },
+      "Spain": {
+        "iou": 0.7762792542641809,
+        "precision": 0.8803418803418803,
+        "recall": 0.8678492239467849,
+        "chips": 30
+      },
+      "Sri-Lanka": {
+        "iou": 0.6721991701244814,
+        "precision": 0.9524318546231961,
+        "recall": 0.6955503512880562,
+        "chips": 42
+      },
+      "USA": {
+        "iou": 0.5258050286722541,
+        "precision": 0.5903912828132739,
+        "recall": 0.8277777777777777,
+        "chips": 69
+      }
+    },
+    "after": {
+      "Bolivia": {
+        "iou": 0.7175295186194369,
+        "precision": 0.9132947976878613,
+        "recall": 0.7699805068226121,
+        "chips": 15
+      },
+      "Ghana": {
+        "iou": 0.45182724252491696,
+        "precision": 0.8133971291866029,
+        "recall": 0.5040770941438102,
+        "chips": 48
+      },
+      "India": {
+        "iou": 0.6106954835134386,
+        "precision": 0.8826591910292351,
+        "recall": 0.6646562123039808,
+        "chips": 68
+      },
+      "Mekong": {
+        "iou": 0.8328994082840236,
+        "precision": 0.990151941474395,
+        "recall": 0.8398568019093079,
+        "chips": 30
+      },
+      "Nigeria": {
+        "iou": 0.6692111959287532,
+        "precision": 0.9740740740740741,
+        "recall": 0.6813471502590673,
+        "chips": 18
+      },
+      "Pakistan": {
+        "iou": 0.25090036014405764,
+        "precision": 0.3446001648804617,
+        "recall": 0.4799081515499426,
+        "chips": 28
+      },
+      "Paraguay": {
+        "iou": 0.52735368956743,
+        "precision": 0.8671548117154811,
+        "recall": 0.5737024221453287,
+        "chips": 66
+      },
+      "Somalia": {
+        "iou": 0.16276703967446593,
+        "precision": 0.21739130434782608,
+        "recall": 0.3931203931203931,
+        "chips": 26
+      },
+      "Spain": {
+        "iou": 0.786435203875656,
+        "precision": 0.8976958525345622,
+        "recall": 0.8638580931263858,
+        "chips": 30
+      },
+      "Sri-Lanka": {
+        "iou": 0.6747444149943204,
+        "precision": 0.9575497044599678,
+        "recall": 0.6955503512880562,
+        "chips": 42
+      },
+      "USA": {
+        "iou": 0.5742622157716497,
+        "precision": 0.6543550165380375,
+        "recall": 0.8243055555555555,
+        "chips": 69
+      }
+    }
+  },
+  "india_200m": {
+    "before": {
+      "iou": 0.7252494244052188,
+      "precision": 0.9017175572519084,
+      "recall": 0.7875,
+      "chips": 28,
+      "ci95": [
+        0.5640573717373598,
+        0.8288038394906849
+      ]
+    },
+    "after": {
+      "iou": 0.7047289504036909,
+      "precision": 0.9011799410029498,
+      "recall": 0.76375,
+      "chips": 28,
+      "ci95": [
+        0.5550620481034049,
+        0.8036636448890279
+      ]
+    }
+  },
+  "decision": {
+    "ship": false,
+    "reasons": [
+      "test IoU rose 0.609 -> 0.621 (+0.012)",
+      "the gain's 95% range (-0.010 to 0.051) does not exclude zero",
+      "Indian recall fell by 0.024, more than the 0.02 allowed"
+    ]
+  },
+  "terrain_rule_for_backend": null
+}

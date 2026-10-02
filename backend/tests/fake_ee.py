@@ -122,6 +122,9 @@ class FakeFloat:
     def rename(self, name):
         return FakeFloat(self.data, self.valid, name)
 
+    def clip(self, _):
+        return self
+
     def visualize(self, **_):
         return self
 
@@ -135,11 +138,31 @@ class FakeRegion:
 
 
 class FakeCollection:
-    def __init__(self, size):
+    """An image collection as metadata: a count, and optionally the scenes.
+
+    `scenes` is a list of property dicts, one per image, keyed by Earth
+    Engine property names ("system:index", "system:time_start", ...).
+    """
+
+    def __init__(self, size, scenes=None, image=None):
         self._size = size
+        self._scenes = list(scenes or [])
+        self._image = image
 
     def size(self):
         return Info(self._size)
+
+    def min(self):
+        """The composite, when the test supplied one."""
+        return self._image
+
+    def limit(self, n, prop=None):
+        rows = sorted(self._scenes, key=lambda r: r.get(prop)) if prop else self._scenes
+        return FakeCollection(min(n, self._size), rows[:n])
+
+    def aggregate_array(self, prop):
+        # As Earth Engine does: images without the property are skipped.
+        return Info([r[prop] for r in self._scenes if prop in r])
 
 
 def fake_area_km2(mask, region, scale=100):

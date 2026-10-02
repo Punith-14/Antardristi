@@ -1,6 +1,6 @@
 import { circleToRequest, toRequest } from './lib/bbox'
 import { polygonToRequest } from './lib/polygon'
-import { pdfPath } from './lib/exportlink'
+import { gisDownloads, pdfPath } from './lib/exportlink'
 
 const BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
 
@@ -23,6 +23,14 @@ export function areaToRequest(area) {
 export function pdfUrl(result) {
   const path = pdfPath(result)
   return path ? `${BASE}${path}` : null
+}
+
+/** GIS downloads for a result, with full URLs. See lib/exportlink. */
+export function gisLinks(result) {
+  return gisDownloads(result).map((item) => ({
+    ...item,
+    url: `${BASE}${item.path}`,
+  }))
 }
 
 async function request(path, options = {}) {
@@ -131,6 +139,9 @@ export const api = {
     request('/analyze/series', { method: 'POST', body: JSON.stringify(payload) }),
 
   cacheStats: () => request('/cache'),
+
+  /** The scale a flood GeoTIFF will be delivered at, before downloading it. */
+  floodPlan: (planPath) => request(planPath),
 }
 
 /** Flood lives on a different endpoint and takes different parameters. */
@@ -144,6 +155,9 @@ export function runAnalysis({
   preEnd,
   scale,
   latest,
+  // {sensor, method?, cloud_limit?} from lib/methods requestFields. Absent
+  // means the radar threshold, as before.
+  floodChoice,
 }) {
   const common = {
     // A drawn shape replaces the name rather than joining it. Sending both
@@ -166,7 +180,7 @@ export function runAnalysis({
         sensor: 'sentinel-1', latest: true,
       })
     }
-    return api.flood({ ...common, sensor: 'sentinel-1' })
+    return api.flood({ ...common, sensor: 'sentinel-1', ...(floodChoice || {}) })
   }
   return api.surface({ ...common, analysis_type: analysisType })
 }
@@ -178,12 +192,12 @@ export function runAnalysis({
  * it month by month, because a jump between a radar month and an optical
  * month would be the instrument changing.
  */
-export function runSeries({ region, area, postStart, postEnd, scale }) {
+export function runSeries({ region, area, postStart, postEnd, scale, floodChoice }) {
   return api.series({
     ...(area ? areaToRequest(area) : { region }),
     start: postStart,
     end: postEnd,
-    sensor: 'sentinel-1',
+    sensor: floodChoice?.sensor || 'sentinel-1',
     scale: scale || 200,
   })
 }

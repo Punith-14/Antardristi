@@ -53,6 +53,22 @@ def get_by_id(request_id):
         return None
 
 
+def request_by_id(request_id):
+    """The request a stored response answered, or None.
+
+    What a download rebuilds from: Earth Engine images are not stored, so a
+    GeoTIFF is recomputed from the same request that produced the numbers.
+    """
+    path = _path(request_id)
+    if not path.exists():
+        return None
+    try:
+        with path.open(encoding="utf-8") as fh:
+            return (json.load(fh) or {}).get("request")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def get(payload, ttl=DEFAULT_TTL_SECONDS):
     """Cached response, or None."""
     if os.environ.get("ANTARDRISHTI_NO_CACHE"):

@@ -124,6 +124,11 @@ def install(monkeypatch, clear_optical=True):
     from geo import districts
     monkeypatch.setattr(districts, "breakdown", lambda *a, **k: None)
 
+    # Scene lists: resolve each part of the one-call dictionary locally.
+    from core import scenes
+    monkeypatch.setattr(scenes, "_one_call",
+                        lambda parts: {k: v.getInfo() for k, v in parts.items()})
+
     monkeypatch.setattr(zone_extraction, "extract", fake_zone_extract)
     monkeypatch.setattr(zone_extraction, "to_geojson",
                         lambda zones, kind="polygon": {"type": "FeatureCollection",

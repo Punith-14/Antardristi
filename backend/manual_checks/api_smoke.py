@@ -361,6 +361,179 @@ def check_group_a():
           f"next pass estimate: {(latest.get('next_pass') or {}).get('expected_on')}")
 
 
+def check_group_b():
+    """Scenes used, sensor and method choice, and GIS downloads, live.
+
+    A window no earlier section used, so the result is computed now rather
+    than served from a cache entry made before scene lists existed.
+    """
+    import io
+    import math
+    import zipfile
+    from xml.etree import ElementTree
+
+    print("\n18. scenes used (Kerala, 14-24 August 2018, with a May baseline)")
+    body = {"region": "kerala", "post_start": "2018-08-14", "post_end": "2018-08-24",
+            "pre_start": "2018-05-01", "pre_end": "2018-05-31", "sensor": "sentinel-1",
+            "scale": 200, "use_llm": False}
+    started = time.time()
+    response = requests.post(f"{BASE}/analyze", json=body, timeout=900)
+    if not check("200", response.status_code == 200, f"{time.time() - started:.0f}s"):
+        print("   ", response.text[:400])
+        return
+    payload = response.json()
+    rid = payload["request_id"]
+    scenes = payload.get("scenes") or {}
+    post, baseline = scenes.get("post") or {}, scenes.get("baseline") or {}
+    check("post-event scenes listed", (post.get("total") or 0) > 0 and post.get("scenes"),
+          f"{post.get('total')} scenes" if not post.get("error") else post["error"])
+    check("baseline scenes listed separately", (baseline.get("total") or 0) > 0,
+          f"{baseline.get('total')} scenes" if not baseline.get("error") else baseline["error"])
+    ids = [s["id"] for s in post.get("scenes") or []]
+    check("scene IDs look like Sentinel-1 GRD", ids and all(i.startswith("S1") for i in ids),
+          ids[0] if ids else "")
+    check("no scene in both windows",
+          not set(ids) & {s["id"] for s in baseline.get("scenes") or []})
+    check("dates agree with 'images taken'",
+          post.get("days") == (payload.get("acquisition") or {}).get("days"),
+          f"{post.get('days')}")
+    check("one relative orbit", len({s.get("relative_orbit") for s in post.get("scenes") or []}) == 1)
+    print(f"   [note] passes {post.get('passes')}; satellites "
+          f"{sorted({s.get('platform') for s in post.get('scenes') or []})}")
+    check("reproduce snippet present", "ee.Filter.inList" in (post.get("reproduce") or ""))
+
+    print("\n19. sensor and method choice")
+    catalogue = requests.get(f"{BASE}/analyses", timeout=60).json()
+    methods = {m["key"]: m for m in (catalogue.get("flood") or {}).get("methods") or []}
+    check("three methods offered", set(methods) == {"radar_threshold", "optical_threshold",
+                                                    "radar_change"}, str(sorted(methods)))
+    check("each states its accuracy", all((m.get("validation") or {}).get("iou")
+                                          for m in methods.values()))
+    response = requests.post(f"{BASE}/analyze", json={
+        "region": "kerala", "post_start": "2023-01-01", "post_end": "2023-01-31",
+        "sensor": "sentinel-2", "scale": 200, "use_llm": False}, timeout=900)
+    if check("optical run 200", response.status_code == 200, str(response.status_code)):
+        optical_result = response.json()
+        check("optical result used Sentinel-2",
+              (optical_result.get("observation") or {}).get("sensor_used") == "sentinel-2")
+        optical_scenes = ((optical_result.get("scenes") or {}).get("post") or {})
+        check("optical scenes carry cloud cover",
+              all("cloud_pct" in s for s in optical_scenes.get("scenes") or [{}]),
+              f"{optical_scenes.get('total')} scenes")
+    else:
+        print("   ", response.text[:300])
+    response = requests.post(f"{BASE}/analyze", json={
+        "region": "kerala", "latest": True, "sensor": "sentinel-2", "scale": 200,
+        "use_llm": False}, timeout=120)
+    check("latest + optical refused in words", response.status_code == 400
+          and "Latest-pass mode" in detail_text(response), str(response.status_code))
+
+    print("\n20. GIS downloads (the section 18 result)")
+    for path, test in (
+        ("zones.geojson", lambda r: r.json()["type"] == "FeatureCollection"),
+        ("zones.kml", lambda r: ElementTree.fromstring(r.content) is not None),
+        ("zones.csv", lambda r: r.text.startswith("rank,id,area_km2")),
+        ("districts.csv", lambda r: r.text.startswith("rank,district,state")),
+    ):
+        response = requests.get(f"{BASE}/analyze/{rid}/export/{path}", timeout=120)
+        ok = response.status_code == 200
+        try:
+            ok = ok and test(response)
+        except Exception as exc:          # noqa: BLE001 - reported, not raised
+            ok = False
+            print("   ", exc)
+        check(path, ok, response.headers.get("content-disposition", str(response.status_code)))
+
+    plan = requests.get(f"{BASE}/analyze/{rid}/export/flood-plan", timeout=300).json()
+    print(f"   [note] GeoTIFF plan: {plan.get('note')}")
+    started = time.time()
+    response = requests.get(f"{BASE}/analyze/{rid}/export/flood.zip", timeout=900)
+    if not check("flood.zip 200", response.status_code == 200,
+                 f"{time.time() - started:.0f}s, {len(response.content) / 1e6:.1f} MB"):
+        print("   ", response.text[:400])
+        return
+    archive = zipfile.ZipFile(io.BytesIO(response.content))
+    tif_name = next(n for n in archive.namelist() if n.endswith(".tif"))
+    check("sidecar and README included",
+          f"{tif_name}.aux.xml" in archive.namelist() and "README.txt" in archive.namelist())
+
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        print("   [skip] numpy/Pillow not installed - GeoTIFF not read back")
+        return
+    image = Image.open(io.BytesIO(archive.read(tif_name)))
+    pixels = np.array(image)
+    values = set(np.unique(pixels).tolist())
+    check("only the four codes", values <= {0, 1, 2, 255}, str(sorted(values)))
+    # Earth Engine may snap the grid outward by a pixel or two at each edge.
+    check("size matches the plan", abs(pixels.shape[1] - plan["width"]) <= 3
+          and abs(pixels.shape[0] - plan["height"]) <= 3,
+          f"{pixels.shape[1]}x{pixels.shape[0]} vs {plan['width']}x{plan['height']}")
+
+    # The flooded pixels, as area, against the result's own flood_extent.
+    # Pixel size and top edge from the GeoTIFF's own tags where Pillow exposes
+    # them - ModelPixelScale + ModelTiepoint, or ModelTransformation - and
+    # otherwise from the plan's bounds and the delivered size.
+    tags = image.tag_v2
+    pixel_scale, tiepoint, transform = tags.get(33550), tags.get(33922), tags.get(34264)
+    if pixel_scale and tiepoint:
+        scale_x, scale_y, top_lat = pixel_scale[0], pixel_scale[1], tiepoint[4]
+        source = "GeoTIFF tags"
+    elif transform:
+        scale_x, scale_y, top_lat = transform[0], -transform[5], transform[7]
+        source = "GeoTIFF transformation tag"
+    else:
+        west, south, east, north = plan["bounds"]
+        scale_x = (east - west) / pixels.shape[1]
+        scale_y = (north - south) / pixels.shape[0]
+        top_lat = north
+        source = "plan bounds (no geo tags readable by Pillow)"
+    print(f"   [note] pixel size {scale_x:.6f} x {scale_y:.6f} deg, from {source}")
+    rows = np.arange(pixels.shape[0])
+    lat = np.radians(top_lat - (rows + 0.5) * scale_y)
+    row_km2 = (scale_x * 111.32) * (scale_y * 111.32) * np.cos(lat)
+    flooded_km2 = float(((pixels == 1).sum(axis=1) * row_km2).sum())
+    extent = next(e for e in payload["evidence"] if e["quantity"] == "flood_extent")["value"]
+    share = abs(flooded_km2 - extent) / extent if extent else 0
+    check("GeoTIFF flood area matches the evidence record (within 10%)", share <= 0.10,
+          f"{flooded_km2:.1f} km2 in the file vs {extent} km2 in E1")
+
+
+def check_group_c():
+    """The terrain check, live - only once notebook 09 has shipped a rule."""
+    print("\n21. terrain check (Kerala, 14-24 August 2018)")
+    terrain = (requests.get(f"{BASE}/analyses", timeout=60).json().get("flood") or {}).get("terrain")
+    if not terrain:
+        print("   [note] no terrain rule shipped: run scripts.fetch_terrain and notebook 09. "
+              "If its decision says SHIP, fill sar.TERRAIN_RULE and run this again.")
+        return
+    print(f"   [note] rule: {terrain.get('text')} (IoU {terrain.get('validation', {}).get('iou')})")
+    body = {"region": "kerala", "post_start": "2018-08-14", "post_end": "2018-08-24",
+            "sensor": "sentinel-1", "scale": 200, "use_llm": False}
+    on = requests.post(f"{BASE}/analyze", json=body, timeout=900)
+    off = requests.post(f"{BASE}/analyze", json={**body, "terrain_check": False}, timeout=900)
+    if not check("both runs 200", on.status_code == 200 and off.status_code == 200,
+                 f"{on.status_code} / {off.status_code}"):
+        return
+    on, off = on.json(), off.json()
+    ev_on = {e["quantity"]: e for e in on["evidence"]}
+    ev_off = {e["quantity"]: e for e in off["evidence"]}
+    check("check applied", (on.get("terrain") or {}).get("applied") is True, str(on.get("terrain")))
+    check("switched off when asked", (off.get("terrain") or {}).get("applied") is False)
+    excluded = (ev_on.get("water_excluded_by_terrain") or {}).get("value")
+    check("excluded area reported", excluded is not None, f"{excluded} km2")
+    if excluded is not None:
+        difference = ev_off["flood_extent"]["value"] - ev_on["flood_extent"]["value"]
+        check("excluded = extent without check - extent with it (within 1 km2)",
+              abs(difference - excluded) <= 1.0,
+              f"{difference:.1f} vs {excluded} km2")
+    check("report still verified", (on.get("verification") or {}).get("passed") is True)
+
+
 if __name__ == "__main__":
     main()
     check_group_a()
+    check_group_b()
+    check_group_c()

@@ -124,7 +124,13 @@ def detect_water(region, start_date, end_date, cloud_limit=DEFAULT_CLOUD_LIMIT,
     Raises surface.NoOpticalImagery when no scene in the window is clear
     enough to use.
     """
-    image, counts = surface.composite(region, start_date, end_date, cloud_limit)
+    from core import scenes as scene_list
+
+    image, counts, used_scenes = surface.composite(
+        region, start_date, end_date, cloud_limit, return_collection=True)
+    # The scenes that passed the cloud filter - the ones the median was built
+    # from - not every scene in the window.
+    scenes = scene_list.describe_safely(used_scenes, "sentinel-2", (start_date, end_date))
     index_image = indices.compute(image, INDEX)
 
     used = THRESHOLD if threshold is None else float(threshold)
@@ -146,6 +152,8 @@ def detect_water(region, start_date, end_date, cloud_limit=DEFAULT_CLOUD_LIMIT,
         "threshold_source": "fixed_shipped" if threshold is None else "fixed",
         "validation": dict(VALIDATION) if (VALIDATION and threshold is None) else None,
         "composite": "median of cloud-masked scenes over window",
+        "scenes": scenes,
+        "acquisition_days": scenes.get("days") if "error" not in scenes else None,
     }
     return water, valid, image, info
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api, runAnalysis, runSeries } from './api'
 import { describeFootprint } from './lib/bbox'
+import { DEFAULT_METHOD, availability, findOption, methodOptions, requestFields } from './lib/methods'
 import AskPanel from './components/AskPanel'
 import MapView from './components/MapView'
 import QueryPanel from './components/QueryPanel'
@@ -21,6 +22,10 @@ const DEFAULT_FORM = {
   // area, and got a change figure against a 2018 baseline they never chose.
   preStart: '',
   preEnd: '',
+  // Sensor and method for flood (lib/methods.js). Radar threshold unless
+  // chosen otherwise; the cloud limit is optical only and blank means default.
+  floodMethod: DEFAULT_METHOD,
+  cloudLimit: '',
 }
 
 export default function App() {
@@ -60,15 +65,32 @@ export default function App() {
       )
   }, [])
 
+  // The flood option chosen in the form. The catalogue supplies the options
+  // and their measured accuracy; without it only the radar default exists.
+  const floodOption = findOption(methodOptions(catalogue), form.floodMethod)
+
   const submit = useCallback(
     async (override) => {
       const query = override || form
+      let floodChoice
+      if (query.analysisType === 'flood_extent') {
+        const option = findOption(methodOptions(catalogue), query.floodMethod)
+        // The same rules the backend enforces, checked before sending, so the
+        // reason is shown in words instead of as a refused request.
+        const check = availability(option, query, query.latest ? 'latest' : 'single')
+        if (!check.ok) {
+          setStatus('error')
+          setError(check.reason)
+          return
+        }
+        floodChoice = requestFields(option, query)
+      }
       setStatus('loading')
       setError('')
       setSelectedZone(null)
 
       try {
-        const data = await runAnalysis({ ...query, area: drawnArea })
+        const data = await runAnalysis({ ...query, area: drawnArea, floodChoice })
         setSeries(null)
         setResult(data)
         setStatus('done')
@@ -92,7 +114,7 @@ export default function App() {
         setError(err.message)
       }
     },
-    [form, drawnArea],
+    [form, drawnArea, catalogue],
   )
 
   // Every single-result path lands the same way, so history, series state
@@ -142,11 +164,18 @@ export default function App() {
   }, [showResult])
 
   const submitSeries = useCallback(async () => {
+    const check = availability(floodOption, form, 'series')
+    if (!check.ok) {
+      setStatus('error')
+      setError(check.reason)
+      return
+    }
     setStatus('loading')
     setError('')
     setSelectedZone(null)
     try {
-      const data = await runSeries({ ...form, area: drawnArea })
+      const data = await runSeries({ ...form, area: drawnArea,
+        floodChoice: requestFields(floodOption, form) })
       setSeries(data)
       setResult(null)
       setStatus('done')
@@ -154,7 +183,7 @@ export default function App() {
       setStatus('error')
       setError(err.message)
     }
-  }, [form, drawnArea])
+  }, [form, drawnArea, floodOption])
 
   // One month of the series, as its own full analysis: evidence, zones, map
   // layers and PDF. Fetched by id from the cache, so nothing is recomputed.

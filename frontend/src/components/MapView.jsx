@@ -56,7 +56,7 @@ export default function MapView({
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
-  const layersRef = useRef({ overlay: null, baseline: null, zones: null, markers: null })
+  const layersRef = useRef({ overlay: null, baseline: null, terrain: null, zones: null, markers: null })
   const draggingRef = useRef(false)
   const drawRef = useRef({ active: false, origin: null, rectangle: null })
   // The in-progress polygon's Leaflet layers, kept out of state: they change
@@ -106,7 +106,7 @@ export default function MapView({
     Object.values(layersRef.current).forEach((layer) => {
       if (layer) map.removeLayer(layer)
     })
-    layersRef.current = { overlay: null, baseline: null, zones: null, markers: null }
+    layersRef.current = { overlay: null, baseline: null, terrain: null, zones: null, markers: null }
 
     if (!result) return
 
@@ -134,6 +134,16 @@ export default function MapView({
     if (tileUrl) {
       layersRef.current.overlay = window.L.tileLayer(tileUrl, {
         opacity,
+        attribution: 'Google Earth Engine',
+      }).addTo(map)
+    }
+
+    // Dark ground the terrain check did not count, in its own colour: a real
+    // flood in the hills that the rule removed must still be visible.
+    const terrainUrl = result.artifacts?.terrain_excluded_tiles
+    if (terrainUrl) {
+      layersRef.current.terrain = window.L.tileLayer(terrainUrl, {
+        opacity: 0.55,
         attribution: 'Google Earth Engine',
       }).addTo(map)
     }
@@ -676,6 +686,11 @@ export default function MapView({
           ) : (
             <span className="legend-item">
               <i style={{ background: hints?.palette?.[0] || '#3182bd' }} /> detected
+            </span>
+          )}
+          {result.artifacts?.terrain_excluded_tiles && (
+            <span className="legend-item" title="Dark on radar, but too high above drainage or too steep to be flood">
+              <i style={{ background: '#c51b8a' }} /> not counted (terrain)
             </span>
           )}
         </div>

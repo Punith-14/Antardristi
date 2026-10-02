@@ -338,6 +338,48 @@ def _district_view(districts):
     }
 
 
+PDF_SCENE_LIMIT = 30
+
+
+def _scenes_view(scenes, limit=PDF_SCENE_LIMIT):
+    """Scene tables for the PDF: post-event first, then the baseline.
+
+    Up to `limit` rows per window. The rest are named by count, and the full
+    list (up to the API's own cap) stays in the JSON result.
+    """
+    if not scenes:
+        return None
+    windows = []
+    for key, label in (("post", "After the event"), ("baseline", "Baseline (before)")):
+        block = scenes.get(key)
+        if not block:
+            continue
+        window = block.get("window") or []
+        title = label + (f", {window[0]} to {window[1]}" if len(window) == 2 else "")
+        if block.get("error"):
+            windows.append({"title": title, "error": block["error"], "rows": []})
+            continue
+        optical = block.get("sensor") == "sentinel-2"
+        rows = [{
+            "id": s.get("id") or "",
+            "acquired": (s.get("acquired") or "").replace("T", " ").replace("Z", " UTC"),
+            "platform": s.get("platform") or "",
+            "detail": (f"cloud {s['cloud_pct']}%, tile {s.get('tile') or '?'}"
+                       if optical and s.get("cloud_pct") is not None
+                       else f"orbit {s.get('relative_orbit')}, {s.get('pass') or '?'}"),
+        } for s in (block.get("scenes") or [])[:limit]]
+        total = block.get("total") or 0
+        note = None
+        if total > len(rows):
+            note = (f"{len(rows)} of {total} scenes shown. The full list is in the "
+                    "JSON result" + (f" (first {block.get('listed')} scenes)"
+                                     if block.get("truncated") else "") + ".")
+        windows.append({"title": title, "collection": block.get("collection"),
+                        "total": total, "rows": rows, "note": note,
+                        "detail_header": "Cloud / tile" if optical else "Orbit / pass"})
+    return windows or None
+
+
 def _zone_outlines(result, limit=50):
     """Zone polygons as lists of (lon, lat), for the schematic map."""
     outlines = []
@@ -437,6 +479,7 @@ def outline(result, exported_at=None):
         "acquisition": _acquisition_rows(result.get("acquisition"), result.get("latest")),
         "population": _population_view(result.get("population")),
         "districts": _district_view(result.get("districts")),
+        "scenes": _scenes_view(result.get("scenes")),
         "provenance": {
             "pipeline_version": provenance.get("pipeline_version"),
             "datasets": provenance.get("datasets") or [],
@@ -772,6 +815,39 @@ def render(result, exported_at=None):
     rows.append(("PDF exported", doc_data["exported_at"]))
     block.append(_key_value_table(rows, cell))
     story.append(KeepTogether(block))
+
+    # --- scenes used ---------------------------------------------------------
+    if doc_data["scenes"]:
+        story.append(Paragraph("Satellite scenes used", h2))
+        story.append(Paragraph(
+            "Each image the result was computed from, by Earth Engine scene ID, so "
+            "the same images can be loaded again.", small))
+        for window in doc_data["scenes"]:
+            story.append(Spacer(1, 3))
+            heading = window["title"]
+            if window.get("collection"):
+                heading += f" - {window['total']} scene{'s' if window['total'] != 1 else ''} " \
+                           f"from {window['collection']}"
+            story.append(Paragraph(f"<b>{para(heading)}</b>", cell))
+            if window.get("error"):
+                story.append(Paragraph(para(window["error"]), small))
+                continue
+            if not window["rows"]:
+                continue
+            rows = [[Paragraph(f"<b>{h}</b>", cell) for h in
+                     ("Scene ID", "Acquired", "Satellite", window["detail_header"])]]
+            # Scene IDs run to ~67 characters with no spaces; a smaller face
+            # keeps most on one line (reportlab splits the rest).
+            scene_id = ParagraphStyle("scene_id", parent=cell, fontSize=6.5, leading=8.5)
+            for s in window["rows"]:
+                rows.append([Paragraph(para(s["id"]), scene_id)]
+                            + [Paragraph(para(s[k]), cell)
+                               for k in ("acquired", "platform", "detail")])
+            table = Table(rows, colWidths=[84 * mm, 34 * mm, 24 * mm, 32 * mm], repeatRows=1)
+            table.setStyle(_grid())
+            story.append(table)
+            if window.get("note"):
+                story.append(Paragraph(para(window["note"]), small))
 
     if prov["known_confusions"]:
         story.append(Paragraph("Known ways this method can be wrong", h2))

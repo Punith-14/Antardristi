@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { assetUrl, citationSegments, pdfUrl } from '../api'
+import { api, assetUrl, citationSegments, gisLinks, pdfUrl } from '../api'
 import {
   alignmentView,
   hasCoverage,
@@ -21,6 +21,9 @@ import {
   sortDistricts,
   sumCheckLine,
 } from '../lib/insights'
+import { planLine } from '../lib/exportlink'
+import { terrainLine } from '../lib/terrain'
+import { missingScenesLine, sceneCount, sceneWindows, truncationLine } from '../lib/scenes'
 
 const fmt = (value, unit) => {
   if (value == null) return '—'
@@ -272,6 +275,121 @@ function Districts({ districts }) {
   )
 }
 
+/**
+ * GIS files for analysts: zones as GeoJSON, KML and CSV, districts as CSV,
+ * and the flood map as a GeoTIFF of codes. The GeoTIFF is rebuilt on Earth
+ * Engine, so its delivery scale is asked for when the menu opens and stated
+ * before anyone waits for it.
+ */
+function Downloads({ result }) {
+  const links = gisLinks(result)
+  const [plan, setPlan] = useState(null)
+  const [planError, setPlanError] = useState('')
+  if (!links.length) return null
+  const tif = links.find((l) => l.key === 'geotiff')
+
+  const onToggle = (event) => {
+    if (!event.currentTarget.open || !tif || plan || planError) return
+    api.floodPlan(tif.planPath).then(setPlan).catch((err) => setPlanError(err.message))
+  }
+
+  return (
+    <details className="downloads" onToggle={onToggle}>
+      <summary>GIS files</summary>
+      <ul>
+        {links.map((link) => {
+          const blocked = link.key === 'geotiff' && (planError || plan?.scale_m === null)
+          return (
+            <li key={link.key}>
+              {blocked ? (
+                <span className="download-blocked">{link.label}</span>
+              ) : (
+                <a href={link.url} download>{link.label}{link.key === 'geotiff' && plan?.scale_m ? ` (${plan.scale_m} m)` : ''}</a>
+              )}
+              <small> {link.hint}</small>
+              {link.key === 'geotiff' && (planError || planLine(plan)) && (
+                <small className="download-note">{planError || planLine(plan)}</small>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      <small className="download-foot">
+        Each file carries the request ID {result.request_id}. In the GeoTIFF, 1 is
+        flooded, 0 seen and dry, 2 permanent water,{' '}
+        {result.terrain?.applied ? '3 dark but excluded by the terrain check, ' : ''}255 not observed.
+      </small>
+    </details>
+  )
+}
+
+/**
+ * Exactly which satellite images the result came from, collapsed by default:
+ * most readers need the dates (shown above), researchers need the IDs. The
+ * Earth Engine snippet loads the same scenes again.
+ */
+function Scenes({ result }) {
+  const [copied, setCopied] = useState(null)
+  const windows = sceneWindows(result.scenes)
+  const missing = missingScenesLine(result)
+  if (!windows.length) {
+    return missing ? <p className="scenes-missing">{missing}</p> : null
+  }
+
+  const copy = async (key, text) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(key)
+    } catch {
+      setCopied(null)
+    }
+  }
+
+  return (
+    <details className="scenes">
+      <summary>Satellite scenes used ({sceneCount(result.scenes)})</summary>
+      {windows.map((w) => (
+        <div key={w.key} className="scene-window">
+          <h4>
+            {w.title}
+            {w.collection && <small> · {w.total} from {w.collection}</small>}
+          </h4>
+          {w.error ? (
+            <p className="people-missing">{w.error}</p>
+          ) : (
+            <>
+              <table className="scene-table">
+                <thead>
+                  <tr><th>Scene ID</th><th>Acquired</th><th>Satellite</th><th>Detail</th></tr>
+                </thead>
+                <tbody>
+                  {w.rows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="scene-id">{row.id}</td>
+                      <td>{row.when}</td>
+                      <td>{row.platform}</td>
+                      <td>{row.detail}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {truncationLine(w) && <small className="scene-note">{truncationLine(w)}</small>}
+              {w.snippet && (
+                <div className="scene-snippet">
+                  <button type="button" onClick={() => copy(w.key, w.snippet)}>
+                    {copied === w.key ? 'Copied' : 'Copy Earth Engine code'}
+                  </button>
+                  <pre>{w.snippet}</pre>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+    </details>
+  )
+}
+
 function Evidence({ evidence, highlighted }) {
   if (!evidence?.length) return null
 
@@ -415,6 +533,8 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
             Download PDF
           </a>
         )}
+        {/* Keyed by result: a plan fetched for one analysis must not show under another. */}
+        <Downloads key={result.request_id} result={result} />
       </div>
 
       <Understood result={result} />
@@ -438,6 +558,11 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
             onCite={onCite}
           />
           <People population={result.population} />
+          {terrainLine(result.terrain) && (
+            <p className={`terrain-line ${result.terrain.applied ? '' : 'terrain-off'}`}>
+              {terrainLine(result.terrain)}
+            </p>
+          )}
           <Coverage
             observation={result.observation}
             unobserved={result.unobserved}
@@ -450,6 +575,7 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
             selected={selectedZone}
             onSelect={onSelectZone}
           />
+          <Scenes key={result.request_id} result={result} />
         </>
       )}
     </div>

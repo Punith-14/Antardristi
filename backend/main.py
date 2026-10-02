@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import ClassVar
 
@@ -11,7 +12,7 @@ from fastapi import File
 from fastapi import Form
 from fastapi import HTTPException
 from fastapi import UploadFile
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -23,6 +24,7 @@ from core import cache
 from geo import footprint
 from pipeline import routing
 from pipeline import timeseries
+from pipeline import export_gis
 from pipeline import latest as latest_mode
 from detection import sar
 from detection import surface
@@ -33,11 +35,30 @@ from legacy.query_parser import parse_query
 from geo.regions import REGIONS, get_region_geometry, resolve_region
 
 from core import paths
+from core import earth_engine
 
 
 BASE_DIR = paths.PROJECT_ROOT
 
 app = FastAPI(title="Antardrishti Prototype API")
+
+
+@app.exception_handler(earth_engine.EarthEngineUnavailable)
+def earth_engine_unavailable(request, exc):
+    """Earth Engine could not start: a 503 that says why, not a 500 traceback.
+
+    `reason` lets the frontend tell "your internet is down" from "your
+    credentials are wrong" - they need different fixes.
+    """
+    reason = ("network" if isinstance(exc, earth_engine.EarthEngineUnreachable)
+              else "authentication")
+    return JSONResponse(status_code=503, content={"detail": {
+        "error": f"earth_engine_{reason}", "message": str(exc)}})
+
+
+# Said once at startup, before any request fails because of it.
+for _problem in earth_engine.configuration_problems():
+    print(f"WARNING: {_problem}. Earth Engine may not start.")
 
 app.add_middleware(
     CORSMiddleware,
@@ -179,7 +200,9 @@ def build_analysis_response(
 
 @app.get("/")
 def home():
-    return {"message": "Antardrishti backend is running"}
+    return {"message": "Antardrishti backend is running",
+            "earth_engine_ready": earth_engine.is_ready(),
+            "configuration_problems": earth_engine.configuration_problems()}
 
 
 @app.get("/regions")
@@ -234,13 +257,16 @@ class FloodRequest(BaseModel):
     # detection against the pre window - Sentinel-1 only, needs pre_start and
     # pre_end, and unvalidated until notebook 06 has been run.
     method: str | None = None
+    # None: the terrain check runs wherever it was measured (once notebook 09
+    # has filled sar.TERRAIN_RULE). False: switched off - the old map.
+    terrain_check: bool | None = None
     scale: int = 100
 
     # Added after results were already cached. Left out of the cache key while
     # unset, so an old request and the same request today share a request_id.
     # ClassVar, or pydantic treats it as a field without a type and refuses to
     # build the model - which stops main.py importing at all.
-    LATE_FIELDS: ClassVar[tuple[str, ...]] = ("cloud_limit", "method", "latest")
+    LATE_FIELDS: ClassVar[tuple[str, ...]] = ("cloud_limit", "method", "latest", "terrain_check")
 
     def cache_key(self):
         """The request as the cache sees it.
@@ -257,6 +283,12 @@ class FloodRequest(BaseModel):
             if key.get(name) is None:
                 key.pop(name, None)
         key["flood_rule"] = sar.RULE_VERSION
+        # Added only once a terrain rule exists and is not switched off, so
+        # until notebook 09 ships one no key changes - and the day it does,
+        # every result is recomputed rather than served without the check.
+        terrain = sar.terrain_version()
+        if terrain and self.terrain_check is not False:
+            key["terrain_rule"] = terrain
         return key
     generate_report: bool = True
     use_llm: bool = True
@@ -274,6 +306,22 @@ def analyze(payload: FloodRequest):
     """
     latest_info = None
     if payload.latest:
+        # The date comes from the newest Sentinel-1 pass, so the analysis has
+        # to be Sentinel-1 too: an optical composite of a radar pass's day is
+        # usually empty, and would be no answer to "now".
+        if payload.sensor == "sentinel-2":
+            raise HTTPException(
+                status_code=400,
+                detail=("Latest-pass mode follows Sentinel-1 radar passes. Use sensor "
+                        "'sentinel-1', or give dates for an optical analysis."),
+            )
+        if payload.method == "change":
+            raise HTTPException(
+                status_code=400,
+                detail=("Latest-pass mode uses the standard threshold. For change "
+                        "detection, give post and baseline dates."),
+            )
+        payload = payload.model_copy(update={"sensor": "sentinel-1"})
         geometry, _ = resolve_area_or_fail(payload)
         try:
             found = sar.latest_acquisition(geometry)
@@ -340,6 +388,7 @@ def _analyze_dates(payload: FloodRequest):
             cloud_limit=(payload.cloud_limit if payload.cloud_limit is not None
                          else analysis.optical.DEFAULT_CLOUD_LIMIT),
             method=payload.method or "threshold",
+            terrain_check=payload.terrain_check,
         )
     except (sar.NoSarImagery, surface.NoOpticalImagery) as exc:
         sensor_name = (
@@ -678,6 +727,12 @@ def list_analyses():
                 f"{m} m": {"threshold_db": r["db"], **r["validation"]}
                 for m, r in sar.SCALE_RULES.items()
             },
+            # Every sensor and method the form can offer, each with the
+            # accuracy measured for it - from the detectors' own constants.
+            "methods": analysis.method_options(200),
+            # The measured terrain check, or None until notebook 09 ships one.
+            "terrain": ({**sar.TERRAIN_RULE, "text": sar.terrain_text(sar.TERRAIN_RULE)}
+                        if sar.TERRAIN_RULE else None),
         },
         "surface": surface.catalogue(),
     }
@@ -922,6 +977,138 @@ def zones_geojson(request_id: str):
         "type": "FeatureCollection",
         "features": [],
     }
+
+
+# ------------------------------------------------------------ GIS downloads
+#
+# The zone and district files are views of the stored result - no Earth
+# Engine call, so they cannot disagree with the evidence record. The GeoTIFF
+# is rebuilt from the stored request (see /export/flood.tif).
+
+def _stored_flood_or_404(request_id):
+    stored = cache.get_by_id(request_id)
+    if stored is None:
+        raise HTTPException(status_code=404,
+                            detail=f"No analysis {request_id}. Run POST /analyze first.")
+    stored["request_id"] = request_id
+    return stored
+
+
+def _download(content, media_type, filename):
+    return Response(content=content, media_type=media_type, headers={
+        "Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/analyze/{request_id}/export/zones.geojson")
+def export_zones_geojson(request_id: str):
+    """Zone outlines with area, severity, rank and people, plus attribution."""
+    stored = _stored_flood_or_404(request_id)
+    body = json.dumps(export_gis.zones_geojson(stored), indent=1)
+    return _download(body, "application/geo+json",
+                     f"{export_gis.file_stem(stored, 'zones')}.geojson")
+
+
+@app.get("/analyze/{request_id}/export/zones.kml")
+def export_zones_kml(request_id: str):
+    """The zones for Google Earth, coloured by severity."""
+    stored = _stored_flood_or_404(request_id)
+    return _download(export_gis.zones_kml(stored), "application/vnd.google-earth.kml+xml",
+                     f"{export_gis.file_stem(stored, 'zones')}.kml")
+
+
+@app.get("/analyze/{request_id}/export/zones.csv")
+def export_zones_csv(request_id: str):
+    stored = _stored_flood_or_404(request_id)
+    return _download(export_gis.zones_csv(stored), "text/csv",
+                     f"{export_gis.file_stem(stored, 'zones')}.csv")
+
+
+@app.get("/analyze/{request_id}/export/districts.csv")
+def export_districts_csv(request_id: str):
+    stored = _stored_flood_or_404(request_id)
+    body = export_gis.districts_csv(stored)
+    if body is None:
+        raise HTTPException(status_code=404, detail=(
+            "This result has no district table: districts are broken down for "
+            "a state or a drawn area, not for a single district."))
+    return _download(body, "text/csv", f"{export_gis.file_stem(stored, 'districts')}.csv")
+
+
+def _flood_rebuild(request_id):
+    """The stored result, its request, the area and the download plan.
+
+    Refuses what cannot be rebuilt faithfully: a result with nothing
+    observed, one that is not a flood map, and one computed under an earlier
+    detection rule - rebuilding that today would deliver a different map
+    from the one its numbers describe.
+    """
+    stored = _stored_flood_or_404(request_id)
+    request = cache.request_by_id(request_id)
+    if request is None or "flood_rule" not in request:
+        raise HTTPException(status_code=409, detail=(
+            "This result's request was not stored with it, so its flood map "
+            "cannot be rebuilt. Run the analysis again."))
+    if request["flood_rule"] != sar.RULE_VERSION:
+        raise HTTPException(status_code=409, detail=(
+            f"This result was computed under detection rule {request['flood_rule']}, "
+            f"and the current rule is {sar.RULE_VERSION}. Rebuilding it now would give "
+            "a different map from the one its numbers describe. Run the analysis again."))
+    sensor_used = (stored.get("observation") or {}).get("sensor_used")
+    if not sensor_used:
+        raise HTTPException(status_code=409, detail=(
+            "Nothing was observed in this result, so there is no flood map to download."))
+
+    payload = FloodRequest(**{k: v for k, v in request.items()
+                              if k not in ("flood_rule", "terrain_rule")})
+    if payload.cache_key().get("terrain_rule") != request.get("terrain_rule"):
+        raise HTTPException(status_code=409, detail=(
+            "The terrain check has changed since this result was computed, so "
+            "rebuilding it now would give a different map from the one its numbers "
+            "describe. Run the analysis again."))
+    geometry, _ = resolve_area_or_fail(payload)
+    plan = export_gis.download_plan(export_gis.region_bounds(geometry), payload.scale)
+    return stored, payload, geometry, sensor_used, plan
+
+
+@app.get("/analyze/{request_id}/export/flood-plan")
+def export_flood_plan(request_id: str):
+    """The scale the GeoTIFF will be delivered at, before downloading it."""
+    _, _, _, _, plan = _flood_rebuild(request_id)
+    return plan
+
+
+@app.get("/analyze/{request_id}/export/flood.zip")
+def export_flood_geotiff(request_id: str):
+    """The flood map as a GeoTIFF of codes, zipped with its sidecar and README.
+
+    1 flooded, 0 observed and dry, 2 permanent water, 255 not observed.
+    Rebuilt from the stored request with the same rule; only the map, none of
+    the statistics.
+    """
+    stored, payload, geometry, sensor_used, plan = _flood_rebuild(request_id)
+    if plan.get("scale_m") is None:
+        raise HTTPException(status_code=413, detail=plan["note"])
+    try:
+        layers = analysis.flood_layers(
+            geometry, payload.post_start, payload.post_end,
+            payload.pre_start, payload.pre_end,
+            sensor=sensor_used, scale=payload.scale,
+            cloud_limit=(payload.cloud_limit if payload.cloud_limit is not None
+                         else analysis.optical.DEFAULT_CLOUD_LIMIT),
+            method=payload.method or "threshold",
+            terrain_check=payload.terrain_check,
+        )
+        tif = export_gis.fetch(export_gis.download_url(layers, geometry, plan))
+    except (sar.NoSarImagery, surface.NoOpticalImagery, sar.NoBaselineImagery) as exc:
+        raise HTTPException(status_code=409, detail=f"The imagery is no longer available: {exc}") from exc
+    except (HTTPException, earth_engine.EarthEngineUnavailable):
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=(
+            f"Earth Engine could not produce the download: {str(exc)[:200]}")) from exc
+
+    content, filename = export_gis.geotiff_zip(tif, stored, plan)
+    return _download(content, "application/zip", filename)
 
 
 @app.get("/cache")

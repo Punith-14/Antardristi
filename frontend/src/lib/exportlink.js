@@ -25,3 +25,45 @@ export function pdfPath(result) {
   const ask = result?.ask_id
   return typeof ask === 'string' && TOKEN.test(ask) ? `${path}?ask_id=${ask}` : path
 }
+
+/**
+ * GIS downloads for a stored flood result (B4), or [] when there are none.
+ *
+ * Only flood results - their evidence carries `flood_extent` - have zones
+ * and a flood map to export. The district table only when there is one, and
+ * the flood map only when something was observed: a link that 404s or 409s
+ * after the click is worse than no link.
+ */
+export function gisDownloads(result) {
+  const id = result?.request_id
+  if (typeof id !== 'string' || !TOKEN.test(id)) return []
+  const isFlood = (result.evidence || []).some((e) => e.quantity === 'flood_extent')
+  if (!isFlood) return []
+
+  const base = `/analyze/${id}/export`
+  const items = [
+    { key: 'geojson', label: 'Zones · GeoJSON', hint: 'QGIS, ArcGIS', path: `${base}/zones.geojson` },
+    { key: 'kml', label: 'Zones · KML', hint: 'Google Earth', path: `${base}/zones.kml` },
+    { key: 'zones_csv', label: 'Zones · CSV', hint: 'spreadsheet', path: `${base}/zones.csv` },
+  ]
+  if (result.districts?.rows?.length) {
+    items.push({ key: 'districts_csv', label: 'Districts · CSV', hint: 'spreadsheet', path: `${base}/districts.csv` })
+  }
+  if (result.observation?.sensor_used) {
+    items.push({
+      key: 'geotiff',
+      label: 'Flood map · GeoTIFF',
+      hint: 'zipped with its legend; rebuilt on Earth Engine, takes a minute',
+      path: `${base}/flood.zip`,
+      planPath: `${base}/flood-plan`,
+    })
+  }
+  return items
+}
+
+/** The line under the GeoTIFF link once its plan is known. */
+export function planLine(plan) {
+  if (!plan) return null
+  if (plan.scale_m == null) return plan.note || 'Too large to download as one file.'
+  return plan.note
+}

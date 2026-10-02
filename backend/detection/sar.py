@@ -132,7 +132,7 @@ SCALE_RULES = {
             # Notebook 08 (evaluation/events_results.json): the Indian chips the
             # threshold was never tuned on. They lie at 25.7-27.3 N, 92.4-93.9 E
             # - the Brahmaputra valley in Assam, August 2016. One event in one
-            # river valley: the 95{'chips': 28, 'iou': 0.725, 'precision': 0.902, 'recall': 0.787, 'lo': 0.564, 'hi': 0.829}ange is the honest answer, not the point.
+            # river valley: the 95% range is the honest answer, not the point.
             "india": {
                 "event": "Assam, August 2016",
                 "chips": 28,
@@ -149,6 +149,85 @@ SCALE_RULES = {
 # under an earlier rule must be recomputed, not served: the same request would
 # otherwise return the old -20 dB extent with no sign the rule had changed.
 RULE_VERSION = "fused_vvvh_scale_thresholds_v2"
+
+
+# The terrain check: dark pixels where a flood cannot physically be - high
+# above the nearest drainage (HAND) or on a steep slope, where radar shadow
+# makes dry hillsides dark - are not counted as flood.
+#
+# None until notebook 09 has measured it AND its pre-stated decision rule
+# passed (test IoU at 200 m up, the gain's bootstrap range above zero, Indian
+# recall down by no more than 0.02). Fill it with the block the notebook
+# prints; evaluation/terrain_results.json is what a test ties it to. Until
+# then the flood path is exactly what it was.
+#
+#     {"hand_source": "MERIT/Hydro/v1_0_1", "max_hand_m": 15.0 or None,
+#      "max_slope_deg": 20.0 or None, "validation": {...}, "india": {...}}
+#
+# MEASURED, AND NOT SHIPPED (notebook 09, evaluation/terrain_results.json).
+# Chosen on train: MERIT HAND <= 10 m; a slope test added nothing at 200 m.
+#
+#                         IoU before -> after   precision        recall
+#     test,  200 m          0.609 -> 0.621      0.807 -> 0.841   0.713 -> 0.703
+#     valid, 200 m          0.594 -> 0.597
+#     Bolivia, 200 m        0.718 -> 0.718      (nothing removed)
+#     India held out, 200 m 0.725 -> 0.705                       0.787 -> 0.764
+#
+# It removed mostly false water (80% of removed test pixels were dry) and
+# helped where look-alikes sit on higher ground - Paraguay +0.054, USA
+# +0.048, Spain +0.010 - but the test gain's bootstrap range (-0.010 to
+# +0.051) includes zero, and it deleted real flood water in Assam, where the
+# Brahmaputra floodplain spreads more than 10 m above the 90 m model's
+# drainage line. It did not touch the arid false water it was hoped to fix
+# (Somalia 0.163 -> 0.163): that dry ground lies near drainage. Both
+# pre-stated conditions failed, so it stays off. A test holds this constant
+# to None while terrain_results.json says "do not ship".
+TERRAIN_RULE = None
+
+COPERNICUS_DEM = "COPERNICUS/DEM/GLO30"
+HAND_BANDS = {"MERIT/Hydro/v1_0_1": "hnd"}
+
+TERRAIN_CAVEAT = (
+    "The terrain check uses a 90 m height-above-drainage model, so narrow valleys, "
+    "embankments and urban drains are represented coarsely; flash floods well above "
+    "the main drainage can be removed by it - the excluded area is reported separately."
+)
+
+
+def terrain_version(rule=None):
+    """A short tag for the terrain rule in force, for cache keys. None if off."""
+    rule = TERRAIN_RULE if rule is None else rule
+    if not rule:
+        return None
+    return (f"terrain_{rule.get('hand_source', '?').split('/')[0].lower()}"
+            f"_h{rule.get('max_hand_m')}_s{rule.get('max_slope_deg')}")
+
+
+def terrain_text(rule):
+    """'more than 15 m above the nearest drainage or on slopes over 20 degrees'."""
+    parts = []
+    if rule.get("max_hand_m") is not None:
+        parts.append(f"more than {rule['max_hand_m']:g} m above the nearest drainage")
+    if rule.get("max_slope_deg") is not None:
+        parts.append(f"on slopes steeper than {rule['max_slope_deg']:g} degrees")
+    return " or ".join(parts) or "nowhere (no terrain test set)"
+
+
+def terrain_implausible(region, rule):
+    """1 where terrain says a flood cannot be. Missing terrain counts as plausible:
+    no elevation data is not evidence against water."""
+    implausible = ee.Image.constant(0)
+    if rule.get("max_hand_m") is not None:
+        source = rule["hand_source"]
+        hand = ee.Image(source)
+        if HAND_BANDS.get(source):
+            hand = hand.select(HAND_BANDS[source])
+        implausible = implausible.Or(hand.unmask(-1).gt(rule["max_hand_m"]))
+    if rule.get("max_slope_deg") is not None:
+        dem_collection = ee.ImageCollection(COPERNICUS_DEM).select("DEM")
+        dem = dem_collection.mosaic().setDefaultProjection(dem_collection.first().projection())
+        implausible = implausible.Or(ee.Terrain.slope(dem).unmask(0).gt(rule["max_slope_deg"]))
+    return implausible.clip(region).rename("terrain_implausible")
 
 
 def rule_for_scale(scale):
@@ -525,8 +604,13 @@ def detect_water(region, start_date, end_date, polarisations=POLARISATIONS,
     if scene_count == 0:
         raise NoSarImagery(start_date, end_date, orbit_pass)
 
-    # When the images were taken, so every result can say how old it is.
-    acquired = acquisition_days(collection)
+    # Which images, and when they were taken - one round trip for both. The
+    # "images taken" days come from the same call as the scene list, so the
+    # two can never disagree. If the list cannot be read, the days still can.
+    from core import scenes as scene_list
+
+    scenes = scene_list.describe_safely(collection, "sentinel-1", (start_date, end_date))
+    acquired = scenes.get("days") if "error" not in scenes else acquisition_days(collection)
 
     # Minimum backscatter over the window: water is dark, so the minimum
     # captures water present at ANY point. A mean would dilute a short flood.
@@ -599,6 +683,7 @@ def detect_water(region, start_date, end_date, polarisations=POLARISATIONS,
         "threshold_scale_exact": scale_rule["exact"] if fused else scale == 10,
         "composite": "per-pixel minimum backscatter over window",
         "acquisition_days": acquired,
+        "scenes": scenes,
         "speckle_filter": f"focal median {speckle_radius} m",
         "orbit_pass": orbit_pass,
         "relative_orbit": relative_orbit,
@@ -614,8 +699,13 @@ KNOWN_CONFUSIONS = [
     "bright rather than dark. Measured at 7.7% of all undetected water.",
     "Wind roughens open water and raises backscatter, which can cause flooding to be "
     "underestimated during a storm.",
-    "Recall is 0.574: roughly two fifths of labelled water is still missed. Most of "
-    "it is brighter than any defensible water threshold - mixed pixels, turbid or "
-    "shallow water - and is a limit of single-date thresholding rather than of this "
+    # Derived from the measured recalls, so it cannot go stale the way the
+    # earlier "Recall is 0.574" did once the 200 m rule shipped.
+    f"Recall is {VALIDATION['recall']} at 10 m and "
+    f"{SCALE_RULES[200]['validation']['recall']} at the 200 m analysis scale: about "
+    f"{1 - SCALE_RULES[200]['validation']['recall']:.0%} to "
+    f"{1 - VALIDATION['recall']:.0%} of labelled water is still missed. Most of it is "
+    "brighter than any defensible water threshold - mixed pixels, turbid or shallow "
+    "water - and is a limit of single-date thresholding rather than of this "
     "particular threshold.",
 ]
