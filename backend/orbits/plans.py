@@ -38,8 +38,13 @@ RETRY_AFTER_FAILURE_S = 15 * 60
 TIMEOUT_S = 30
 USER_AGENT = "Antardrishti/1.0 (flood mapping for India; final-year project)"
 
+# The host is optional: the page links some files with a full address and
+# others relative to the site. Requiring the host silently dropped every
+# relatively-linked file - in October 2026 that was all of Sentinel-1D and the
+# newest Sentinel-1C plans, so the app showed one satellite and an out-of-date
+# plan with no image of India in it.
 LINK = re.compile(
-    r"https://sentinels\.copernicus\.eu/documents/d/sentinel/"
+    r"(?:https?://sentinels\.copernicus\.eu)?/documents/d/sentinel/"
     r"(s1([a-z])_mp_user_(\d{8}t\d{6})_(\d{8}t\d{6})[A-Za-z0-9_-]*)",
     re.IGNORECASE)
 

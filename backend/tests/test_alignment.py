@@ -169,7 +169,7 @@ def test_every_check_reports_itself_whether_it_passed_or_not():
     from one that ran no checks at all."""
     result = alignment.check("flood extent in Kerala in August 2018", route())
 
-    assert len(result["checks"]) == 5
+    assert len(result["checks"]) == 6, "a sixth check, named_days_are_used, was added for day ranges"
     for check in result["checks"]:
         assert set(check) == {"name", "passed", "detail"}
         assert check["detail"]

@@ -780,3 +780,19 @@ a { color: var(--teal); }
 @media (max-width: 1080px) {
   .account-grid { grid-template-columns: 1fr; }
 }
+
+/* Area box suggestions */
+.place-input { position: relative; }
+.place-input input { width: 100%; }
+.place-list {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+  margin: 0; padding: 4px; list-style: none; background: #fff;
+  border: 1px solid var(--line, #dbe3ea); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(11, 37, 69, .14); max-height: 300px; overflow-y: auto;
+}
+.place-list li { padding: 8px 10px; border-radius: 7px; cursor: pointer; display: flex; flex-direction: column; gap: 1px; }
+.place-list li strong { font-size: 14px; color: var(--navy, #0B2545); }
+.place-list li small { font-size: 12px; color: var(--muted); }
+.place-list li.on { background: rgba(15, 139, 141, .1); }
+.month-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.month-field input { width: 100%; }

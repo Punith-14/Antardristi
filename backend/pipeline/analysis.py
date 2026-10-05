@@ -93,7 +93,9 @@ def resolve_geometry(slug_or_name, level="level1"):
     # What the caller asked for, when GAUL files it under an older name. The
     # response says "Orissa" because that is the boundary actually measured;
     # this records that the question said Odisha.
-    asked = (slug_or_name or "").replace("-", " ").strip()
+    # Compared without a ", State" qualifier: "Aurangabad, Bihar" asked for
+    # Aurangabad, not for a place GAUL renamed.
+    asked = regions.split_state((slug_or_name or "").replace("-", " "))[0]
     if regions._normalize(asked) != regions._normalize(entry["name"]):
         meta["requested_as"] = asked
         meta["name_note"] = (

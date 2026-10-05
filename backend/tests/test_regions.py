@@ -218,3 +218,34 @@ def test_a_partial_name_matching_one_district_still_works():
 def test_two_character_fragments_are_not_treated_as_names():
     with pytest.raises(regions.RegionNotFound):
         regions.lookup("go")
+
+
+# --------------------------------------------------- "District, State" and the name list
+
+@pytest.mark.parametrize("text,expected", [
+    ("Aurangabad, Bihar", ("Aurangabad", "Bihar")),
+    ("Aurangabad (Maharashtra)", ("Aurangabad", "Maharashtra")),
+    ("Kerala", ("Kerala", None)),
+    (", Bihar", (", Bihar", None)),
+])
+def test_split_state(text, expected):
+    assert regions.split_state(text) == expected
+
+
+def test_a_state_qualifier_settles_a_repeated_district_name():
+    """The Area box's suggestions fill in "Aurangabad, Bihar"; without the
+    qualifier the same name is (correctly) refused as ambiguous."""
+    with pytest.raises(regions.RegionAmbiguous):
+        regions.lookup("Aurangabad", fallback=False)
+    assert regions.lookup("Aurangabad, Bihar", fallback=False)["state"] == "Bihar"
+    assert regions.lookup("aurangabad (maharashtra)", fallback=False)["state"] == "Maharashtra"
+    with pytest.raises(regions.RegionNotFound):
+        regions.lookup("Aurangabad, Kerala", fallback=False)
+
+
+def test_place_names_lists_states_first_and_keeps_both_aurangabads():
+    names = regions.place_names()
+    assert names[0]["level"] == "state"
+    assert [n["state"] for n in names if n["name"] == "Aurangabad"] == ["Bihar", "Maharashtra"]
+    orissa = next(n for n in names if n["name"] == "Orissa")
+    assert orissa["aka"] == "odisha", "the modern name is offered so typing it finds the place"

@@ -109,7 +109,11 @@ def _india_from_earth_engine():
     from geo import boundaries
     earth_engine.initialize()
     states = boundaries.india(boundaries.dataset("state"))
-    geometry = _outline(states.geometry(), INDIA_SIMPLIFY_M)
+    # Simplify each state BEFORE joining them. Joining 36 full-detail state
+    # outlines first timed out when the project was in Earth Engine's slower
+    # restricted mode, and the page fell back to the coarse outline.
+    light = states.map(lambda f: f.simplify(maxError=INDIA_SIMPLIFY_M))
+    geometry = _outline(light.union(maxError=INDIA_SIMPLIFY_M).geometry(), INDIA_SIMPLIFY_M)
     return _remember("india", {"name": "India", "geometry": geometry, "approximate": False,
                                "source": boundaries.dataset("state")})
 

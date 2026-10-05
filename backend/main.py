@@ -334,6 +334,22 @@ def list_regions():
     return {"regions": [{"slug": slug, **config} for slug, config in REGIONS.items()]}
 
 
+@app.get("/regions/names")
+def region_names():
+    """Every state and district name, for the Area box's suggestions.
+
+    Names only, from the index every lookup already builds (two small Earth
+    Engine metadata reads, once per server start).
+    """
+    try:
+        return {"places": regions.place_names(), "source": regions.BOUNDARY_SOURCE}
+    except Exception as exc:                     # noqa: BLE001 - the box still works without it
+        raise HTTPException(status_code=503, detail={
+            "error": "names_unavailable",
+            "message": f"The place list could not be loaded ({type(exc).__name__}); type the name instead.",
+        }) from exc
+
+
 @app.get("/detect")
 def detect():
     return build_analysis_response("Show flooded areas in Kerala", mode="disaster", region="kerala")

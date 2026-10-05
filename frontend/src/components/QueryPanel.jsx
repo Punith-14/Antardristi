@@ -4,6 +4,8 @@ import { accuracyLine, availability, findOption, limitsLine, methodOptions } fro
 import { PRESETS, WHEN_MODES, formForMode, modeOf } from '../lib/presets'
 import { reliabilityView, scoreSentence } from '../lib/reliability'
 import { effectiveOption, terrainAvailable } from '../lib/terrain'
+import { dateProblem, firstDay, lastDay, monthOf, wholeMonths } from '../lib/months'
+import PlaceInput from './PlaceInput'
 import Term from './Term'
 
 const DESCRIPTIONS = {
@@ -82,7 +84,18 @@ export default function QueryPanel({
 
   const setMode = (key) => {
     setLocalError('')
-    onChange({ ...form, when: key, ...(key === 'compare' ? {} : { preStart: '', preEnd: '' }) })
+    onChange({
+      ...form, when: key,
+      ...(key === 'compare' ? {} : { preStart: '', preEnd: '' }),
+      // Month by month runs whole months: widen whatever dates were there.
+      ...(key === 'monthly' && form.postStart && form.postEnd ? wholeMonths(form.postStart, form.postEnd) : {}),
+    })
+  }
+
+  const setMonth = (which) => (event) => {
+    setLocalError('')
+    const month = event.target.value
+    onChange({ ...form, [which]: which === 'postStart' ? firstDay(month) : lastDay(month) })
   }
 
   const setType = (event) => {
@@ -95,12 +108,9 @@ export default function QueryPanel({
 
   const submit = (event) => {
     event.preventDefault()
-    if (!form.postStart || !form.postEnd) {
-      setLocalError('Choose both dates.')
-      return
-    }
-    if (mode === 'compare' && (!form.preStart || !form.preEnd)) {
-      setLocalError('Choose the "before" dates too, or switch to One period.')
+    const problem = dateProblem(form, mode)
+    if (problem) {
+      setLocalError(problem)
       return
     }
     if (mode === 'monthly') onSeries()
@@ -152,8 +162,8 @@ export default function QueryPanel({
           </div>
         ) : (
           <>
-            <input value={form.region} onChange={set('region')} aria-label="State or district"
-              placeholder="Kerala, Morigaon, Darbhanga…" />
+            <PlaceInput value={form.region} disabled={busy}
+              onChange={(region) => { setLocalError(''); onChange({ ...form, region }) }} />
             <small className="step-hint">
               Any Indian state or district. Or draw a box, circle or shape on the map, or upload a
               boundary file, with the buttons at the map's top right.
@@ -180,10 +190,25 @@ export default function QueryPanel({
             <small className="date-label">After</small>
           </>
         )}
-        <div className="field-row">
-          <input type="date" value={form.postStart} onChange={set('postStart')} aria-label="From" />
-          <input type="date" value={form.postEnd} onChange={set('postEnd')} aria-label="To" />
-        </div>
+        {mode === 'monthly' ? (
+          <div className="field-row">
+            <label className="month-field">
+              <small className="date-label">First month</small>
+              <input type="month" value={monthOf(form.postStart)} onChange={setMonth('postStart')}
+                aria-label="First month" />
+            </label>
+            <label className="month-field">
+              <small className="date-label">Last month</small>
+              <input type="month" value={monthOf(form.postEnd)} onChange={setMonth('postEnd')}
+                aria-label="Last month" />
+            </label>
+          </div>
+        ) : (
+          <div className="field-row">
+            <input type="date" value={form.postStart} onChange={set('postStart')} aria-label="From" />
+            <input type="date" value={form.postEnd} onChange={set('postEnd')} aria-label="To" />
+          </div>
+        )}
         {mode === 'one' && isFlood && onLatest && (
           <button type="button" className="link-btn" disabled={busy || !latestCheck.ok} onClick={onLatest}
             title={latestCheck.ok ? 'Analyses the newest Sentinel-1 pass over the area' : latestCheck.reason}>

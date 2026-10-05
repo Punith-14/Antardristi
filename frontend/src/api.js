@@ -115,6 +115,7 @@ export const api = {
   catalogue: () => request('/analyses'),
 
   regions: () => request('/regions'),
+  regionNames: () => request('/regions/names'),
 
   /** Flood extent, Sentinel-1. */
   flood: (payload) =>

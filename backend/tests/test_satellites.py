@@ -122,6 +122,20 @@ def test_plan_links_come_from_file_names_once_each():
     assert old["start"] == datetime(2026, 7, 17, 17, 15, 28, tzinfo=timezone.utc)
 
 
+def test_relative_links_are_read_too():
+    """The page links some files relative to the site. Requiring the host
+    dropped all of Sentinel-1D and the newest 1C plans (October 2026)."""
+    html = ('<a href="/documents/d/sentinel/s1d_mp_user_20261002t181009_20261022t201800">1D</a>'
+            "<a href='https://sentinels.copernicus.eu/documents/d/sentinel/"
+            "s1c_mp_user_20260925t173103_20261017t194000'>1C old</a>"
+            '<a href="/documents/d/sentinel/s1c_mp_user_20261002t172332_20261024t194000">1C new</a>')
+    found = plans.links(html)
+    assert {f["satellite"] for f in found} == {"S1C", "S1D"}
+    assert all(f["url"].startswith("https://sentinels.copernicus.eu/documents/d/sentinel/") for f in found)
+    chosen = plans.current(found, NOW)
+    assert [f["name"][:27] for f in chosen] == ["s1c_mp_user_20261002t172332", "s1d_mp_user_20261002t181009"]
+
+
 def test_the_newest_file_covering_now_is_used_and_ended_missions_drop_out():
     chosen = plans.current(plans.links(PAGE), NOW)
     assert [f["satellite"] for f in chosen] == ["S1C", "S1D"], "1A's plan ended in June"

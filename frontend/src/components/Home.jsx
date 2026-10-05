@@ -31,7 +31,7 @@ function SatelliteCard() {
         <span className="mini-orbit" aria-hidden="true"><i /><b /></span>
         <div>
           <h3>Satellites</h3>
-          <small className="muted">{data ? `${data.satellites.length} Sentinel-1 satellites active` : failed ? 'Not available right now' : 'Checking…'}</small>
+          <small className="muted">{data ? `${data.satellites.length} Sentinel-1 satellite${data.satellites.length === 1 ? '' : 's'} active` : failed ? 'Not available right now' : 'Checking…'}</small>
         </div>
       </div>
       <dl className="sat-card-figures">

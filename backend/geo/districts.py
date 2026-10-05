@@ -203,9 +203,12 @@ def district_people(flood_mask, features, event_date, scale, boundary_set=None):
     state_field = boundaries.name_field("state", boundary_set)
     by_district = {}
     for source, label, year, image in population_model.sources_for(int(str(event_date)[:4])):
-        flooded = population_model.flooded_population(image, flood_mask, scale)
-        rows = population_model.sum_per_feature(
-            flooded, features, image.projection()).getInfo()["features"]
+        try:
+            flooded = population_model.flooded_population(image, flood_mask, scale)
+            rows = population_model.sum_per_feature(
+                flooded, features, image.projection()).getInfo()["features"]
+        except Exception:
+            continue             # the other model still gives a figure
         for row in rows:
             name = district_key(row["properties"].get(district_field),
                                 row["properties"].get(state_field))

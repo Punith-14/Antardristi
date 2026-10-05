@@ -51,7 +51,30 @@ NAME_ALIASES = {
     "vijayawada": "krishna",
     "tiruchirappalli": "tiruchchirappalli",
     "thoothukudi": "tuticorin",
+    # Districts renamed or respelt after GAUL 2015 was compiled.
+    "sivasagar": "sibsagar",
+    "gurugram": "gurgaon",
+    "shivamogga": "shimoga",
+    "tumakuru": "tumkur",
+    "ayodhya": "faizabad",
 }
+
+
+def split_state(text):
+    """'Aurangabad, Bihar' or 'Aurangabad (Bihar)' -> ('Aurangabad', 'Bihar').
+
+    The way to say WHICH of two same-named districts is meant; the suggestion
+    list in the web app fills it in. Without a qualifier -> (text, None).
+    """
+    raw = (text or "").strip()
+    paren = re.match(r"^(.*?)\s*\(([^()]+)\)\s*$", raw)
+    if paren:
+        return paren.group(1).strip(), paren.group(2).strip()
+    if "," in raw:
+        name, state = raw.rsplit(",", 1)
+        if name.strip() and state.strip():
+            return name.strip(), state.strip()
+    return raw, None
 
 # Read at import for the names other modules cite; the boundary set itself
 # lives in geo/boundaries.py (BOUNDARY_SET in .env chooses it).
@@ -264,6 +287,32 @@ def gaul_name_index(key=None):
     return index
 
 
+def place_names(key=None):
+    """Every state and district the boundary set knows, for the search box.
+
+    [{"name", "state", "level", "aka"}], states first then districts, A-Z.
+    `aka` is the modern spelling when GAUL files the place under an older one
+    (Sibsagar -> Sivasagar), so typing either finds it. Names only - no
+    geometry - from the same index every lookup already uses.
+    """
+    index = gaul_name_index(key) if key else gaul_name_index()
+    modern = {}
+    for new, old in NAME_ALIASES.items():
+        modern.setdefault(old, new)
+    seen, out = set(), []
+    for normalized, entries in index.items():
+        for e in entries:
+            row = (e["level"], e["name"], e["state"])
+            if row in seen:
+                continue
+            seen.add(row)
+            out.append({"name": e["name"], "state": e["state"], "level": e["level"],
+                        "aka": modern.get(normalized)})
+    order = {"state": 0, "district": 1}
+    out.sort(key=lambda r: (order.get(r["level"], 2), r["name"].lower(), (r["state"] or "").lower()))
+    return out
+
+
 def lookup(slug_or_name, key=None, fallback=True):
     """Find a place in the active boundary set; if it is not there, in the
     fallback set (geo/boundaries.py) - and say which one answered.
@@ -296,9 +345,10 @@ def _lookup_in(slug_or_name, key=None):
     to more than one place, and RegionNotFound when it belongs to none - never
     picks one, and never falls back to somewhere else.
     """
-    raw = (slug_or_name or "").replace("-", " ").strip()
+    raw, state_wanted = split_state((slug_or_name or "").replace("-", " "))
     if not raw:
         raise RegionNotFound(raw)
+    wanted_states = set(candidate_names(state_wanted)) if state_wanted else None
 
     # Called without the key when none is given, so the index can still be
     # replaced by a no-argument stand-in in tests.
@@ -306,6 +356,11 @@ def _lookup_in(slug_or_name, key=None):
 
     def decide(entries):
         """One match is an answer. Several is a question for the user."""
+        if wanted_states is not None:
+            # "Aurangabad, Bihar": keep the district in that state. A state
+            # GAUL files under its older name (Odisha -> Orissa) still matches.
+            entries = [e for e in entries
+                       if e["level"] == "district" and _normalize(e["state"]) in wanted_states]
         for level in ("state", "district"):
             at_level = [entry for entry in entries if entry["level"] == level]
             if len(at_level) == 1:

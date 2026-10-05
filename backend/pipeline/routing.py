@@ -18,6 +18,8 @@ import os
 import re
 from datetime import date, datetime, timedelta
 
+from core import dateparse
+
 ROUTER_MODEL = os.environ.get("ROUTER_MODEL", "openai/gpt-oss-20b")
 
 # Below this, the model's own uncertainty is treated as a refusal. Running an
@@ -192,6 +194,13 @@ def detect_dates(text, today=None):
 
     year_match = re.search(r"\b(19|20)\d{2}\b", lowered)
     year = int(year_match.group(0)) if year_match else None
+
+    # A day range before a month: "between 20 and 31 July 2026" is those
+    # twelve days, not the whole of July.
+    ranges = dateparse.day_ranges(lowered, year or today.year)
+    if ranges:
+        start, end = ranges[0]
+        return start.isoformat(), end.isoformat()
 
     for name, (start_month, end_month) in SEASONS.items():
         if name in lowered:

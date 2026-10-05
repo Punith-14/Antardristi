@@ -32,6 +32,47 @@ def test_worldpop_uses_the_event_year_within_what_it_publishes(year, used):
     assert P.worldpop_year(year) == used
 
 
+def test_a_year_the_catalogue_lacks_falls_back_to_the_nearest_it_has():
+    """A 2026 flood asked WorldPop for a year it did not hold; the people count
+    and the district table both failed (found live on Assam, July 2026)."""
+    assert P.pick_year(2021, [2000, 2010, 2020]) == 2020
+    assert P.pick_year(2025, [2015, 2020, 2025, 2030]) == 2025
+    assert P.pick_year(2025, [2015, 2020, 2030]) == 2020, "ties prefer the earlier, published year"
+    assert P.pick_year(2021, []) == 2021, "catalogue unknown: use the documented year"
+    assert P.ee_date_year(1577836800000) == 2020
+
+
+def test_one_population_model_failing_does_not_cost_the_other(monkeypatch):
+    class Value:
+        def __init__(self, v): self.v = v
+        def get(self, _): return self
+        def getInfo(self): return self.v
+
+    class Image:
+        def __init__(self, ok): self.ok = ok
+        def projection(self): return None
+        def bandNames(self): return Value(["b"])
+
+    monkeypatch.setattr(P.earth_engine, "initialize", lambda: None)
+    monkeypatch.setattr(P, "sources_for", lambda year: [("ghsl", "GHSL", 2025, Image(False)),
+                                                        ("worldpop", "WorldPop", 2020, Image(True))])
+    monkeypatch.setattr(P, "flooded_population", lambda img, mask, scale: img)
+
+    def sum_over(img, region, proj):
+        if not img.ok:
+            raise RuntimeError("Image.select: Parameter 'input' is required")
+        return Value(12437)
+    monkeypatch.setattr(P, "sum_over", sum_over)
+
+    out = P.exposure(None, None, [], "2026-07-25", 200)
+    assert "error" not in out, out
+    assert out["people_in_flood"]["low"] == out["people_in_flood"]["high"] == 12400
+    assert [s["key"] for s in out["sources"]] == ["worldpop"]
+
+    monkeypatch.setattr(P, "sources_for", lambda year: [("ghsl", "GHSL", 2025, Image(False))])
+    assert "error" in P.exposure(None, None, [], "2026-07-25", 200), "all failing is still an error"
+
+
 # ---------------------------------------------------------------- rounding
 
 @pytest.mark.parametrize("raw,shown", [(12437, 12400), (1049.9, 1000), (437, 440),

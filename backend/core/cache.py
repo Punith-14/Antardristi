@@ -90,6 +90,19 @@ def request_by_id(request_id):
         return None
 
 
+# Parts of a result that may fail without failing the flood figure. A result
+# where one of them failed is served once, never again from the cache: the
+# failure may be a bug since fixed (a 2026 flood lost its people count to a
+# missing population year) or a passing Earth Engine error, and a cache hit
+# would repeat it for a month.
+OPTIONAL_PARTS = ("population", "districts")
+
+
+def partly_failed(response):
+    return any(isinstance(response.get(part), dict) and response[part].get("error")
+               for part in OPTIONAL_PARTS)
+
+
 def get(payload, ttl=DEFAULT_TTL_SECONDS):
     """Cached response, or None."""
     if os.environ.get("ANTARDRISHTI_NO_CACHE"):
@@ -112,6 +125,8 @@ def get(payload, ttl=DEFAULT_TTL_SECONDS):
         return None
 
     response = entry.get("response") or {}
+    if partly_failed(response):
+        return None
     response["_cache"] = {
         "hit": True,
         "stored_at": entry.get("stored_at"),

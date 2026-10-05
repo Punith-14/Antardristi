@@ -157,3 +157,18 @@ def test_provenance_carries_known_confusions(contract):
 
 def test_contract_is_valid_json_on_disk(contract):
     assert json.dumps(contract)
+
+
+def test_a_result_with_a_failed_part_is_not_served_from_the_cache(tmp_path, monkeypatch):
+    """A 2026 flood cached with 'population could not be computed' would have
+    kept that error for a month after the bug was fixed."""
+    from core import cache
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.delenv("ANTARDRISHTI_NO_CACHE", raising=False)
+    monkeypatch.delenv("MONGODB_URI", raising=False)
+    good = {"evidence": [], "population": {"people_in_flood": None}, "districts": {"rows": []}}
+    cache.put({"q": "good"}, good)
+    assert cache.get({"q": "good"}) is not None
+    for part in ("population", "districts"):
+        cache.put({"q": part}, {**good, part: {"error": "could not be computed"}})
+        assert cache.get({"q": part}) is None, part

@@ -35,6 +35,8 @@ without a model and without a doubt about their own reliability.
 import re
 from datetime import date
 
+from core import dateparse
+
 # Month names as people write them, mapped to numbers. Short forms included
 # because "Aug 2018" is at least as common as "August 2018".
 MONTHS = {
@@ -97,6 +99,17 @@ def wants_change(question):
     return any(
         re.search(rf"\b{re.escape(word)}\b", lowered) for word in CHANGE_WORDS
     )
+
+
+DAY_TOLERANCE = 1
+
+
+def _window(start, end):
+    """(start, end) dates of a window, or None."""
+    try:
+        return date.fromisoformat(start[:10]), date.fromisoformat(end[:10])
+    except (TypeError, ValueError):
+        return None
 
 
 def _window_month(start):
@@ -201,6 +214,27 @@ def check(question, route):
         f"The question names {', '.join(str(y) for y in stray)} but the "
         "analysis covers " + ", ".join(str(y) for y in sorted(route_years)) + "."
         if stray else "ok",
+    )
+
+    # --- 6. days named are the days measured ---------------------------------
+    # Months alone passed "between 20 and 31 July" measured as all of July.
+    # Each day range in the question must match the analysis or the baseline
+    # window to within DAY_TOLERANCE days at both ends.
+    route_windows = [w for w in (_window(route.get("post_start"), route.get("post_end")),
+                                 _window(route.get("pre_start"), route.get("pre_end"))) if w]
+    unmatched = [
+        (s, e) for s, e in dateparse.day_ranges(question)
+        if not any(abs((s - ws).days) <= DAY_TOLERANCE and abs((e - we).days) <= DAY_TOLERANCE
+                   for ws, we in route_windows)
+    ]
+    record(
+        "named_days_are_used",
+        not unmatched,
+        "The question asks about "
+        + ", ".join(f"{s:%d %b %Y} to {e:%d %b %Y}" for s, e in unmatched)
+        + " but the analysis covers "
+        + ", ".join(f"{ws:%d %b %Y} to {we:%d %b %Y}" for ws, we in route_windows) + "."
+        if unmatched else "ok",
     )
 
     failures = [c["detail"] for c in checks if not c["passed"]]

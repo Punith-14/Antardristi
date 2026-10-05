@@ -107,16 +107,62 @@ def caveat(sources, missed_fraction=None):
 
 # ------------------------------------------------------------ earth engine
 
+def pick_year(preferred, available):
+    """The preferred year if the catalogue has it, else the nearest it does.
+
+    Ties go to the earlier year: a published estimate beats a projection. With
+    no list (the catalogue could not be asked) the preferred year is used.
+    """
+    if not available:
+        return preferred
+    if preferred in available:
+        return preferred
+    return min(available, key=lambda y: (abs(y - preferred), y))
+
+
+# Which years each catalogue really holds, asked once per process. The fixed
+# ranges above are what the datasets document; the catalogue is what exists.
+# A 2026 flood asked for an image that was not there, .first() returned null,
+# and both the people count and the district table failed with
+# "Image.select: Parameter 'input' is required".
+_AVAILABLE = {}
+
+
+def available_years(key):
+    if key not in _AVAILABLE:
+        try:
+            if key == "ghsl":
+                stamps = ee.ImageCollection(GHSL).aggregate_array("system:time_start").getInfo()
+                years = [int(ee_date_year(t)) for t in stamps]
+            else:
+                years = (ee.ImageCollection(WORLDPOP)
+                         .filter(ee.Filter.eq("country", WORLDPOP_COUNTRY))
+                         .aggregate_array("year").getInfo())
+            _AVAILABLE[key] = sorted({int(y) for y in years})
+        except Exception:
+            return []            # unknown: fall back to the documented years, not cached
+    return _AVAILABLE[key]
+
+
+def ee_date_year(millis):
+    """Year of an Earth Engine timestamp (milliseconds since 1970, UTC)."""
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(int(millis) / 1000, tz=timezone.utc).year
+
+
 def sources_for(event_year):
-    """[(key, label, year, ee.Image)] for the event year, both models."""
-    epoch = ghsl_epoch(event_year)
+    """[(key, label, year, ee.Image)] for the event year, both models.
+
+    Each model uses the nearest year its catalogue actually has.
+    """
+    epoch = pick_year(ghsl_epoch(event_year), available_years("ghsl"))
     ghsl = (
         ee.ImageCollection(GHSL)
         .filterDate(f"{epoch}-01-01", f"{epoch}-12-31")
         .first()
         .select(GHSL_BAND)
     )
-    wp_year = worldpop_year(event_year)
+    wp_year = pick_year(worldpop_year(event_year), available_years("worldpop"))
     worldpop = (
         ee.ImageCollection(WORLDPOP)
         .filter(ee.Filter.eq("country", WORLDPOP_COUNTRY))
@@ -185,23 +231,31 @@ def exposure(flood_mask, region, zones, event_date, analysis_scale, missed_fract
                 for z in zones if z.get("geometry")
             ])
 
-        totals, per_zone, used = {}, {}, []
+        totals, per_zone, used, failed = {}, {}, [], []
         for key, label, src_year, population in sources:
-            flooded = flooded_population(population, flood_mask, analysis_scale)
-            proj = population.projection()
-            band = population.bandNames().get(0)
+            # One model failing must not cost the other: the range then comes
+            # from the one that worked, and the sources list says which.
+            try:
+                flooded = flooded_population(population, flood_mask, analysis_scale)
+                proj = population.projection()
+                band = population.bandNames().get(0)
 
-            total = sum_over(flooded, region, proj).get(band).getInfo()
+                total = sum_over(flooded, region, proj).get(band).getInfo()
+                zone_rows = (sum_per_feature(flooded, zone_fc, proj).getInfo()["features"]
+                             if zone_fc is not None else [])
+            except Exception as exc:
+                failed.append(f"{label}: {str(exc)[:80]}")
+                continue
             totals[key] = round_people(total or 0)
             used.append({"key": key, "label": label, "year": src_year,
                          "id": GHSL if key == "ghsl" else WORLDPOP})
+            for row in zone_rows:
+                props = row["properties"]
+                per_zone.setdefault(props["zone_id"], {})[key] = round_people(
+                    props.get("sum") or 0)
 
-            if zone_fc is not None:
-                rows = sum_per_feature(flooded, zone_fc, proj).getInfo()["features"]
-                for row in rows:
-                    props = row["properties"]
-                    per_zone.setdefault(props["zone_id"], {})[key] = round_people(
-                        props.get("sum") or 0)
+        if not used:
+            raise RuntimeError("; ".join(failed) or "no population model available")
 
         return {
             "people_in_flood": as_range(totals),

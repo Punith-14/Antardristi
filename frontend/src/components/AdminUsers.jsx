@@ -78,7 +78,7 @@ export default function AdminUsers({ me, onClose, inline = false }) {
         act(api.createUser(draft), `${draft.username} created`).then(() => setDraft({ username: '', password: '', role: 'viewer' }))
       }}>
         <input placeholder="username" value={draft.username} onChange={(e) => setDraft({ ...draft, username: e.target.value })} />
-        <input type="password" placeholder="password (10+ characters)" autoComplete="new-password" value={draft.password}
+        <input type="password" placeholder="password (8+, with A-z, 0-9, symbol)" autoComplete="new-password" value={draft.password}
           onChange={(e) => setDraft({ ...draft, password: e.target.value })} />
         <select value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value })}>
           {Object.keys(ROLE_HELP).map((r) => <option key={r} value={r}>{r}</option>)}
