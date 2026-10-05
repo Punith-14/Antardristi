@@ -458,7 +458,19 @@ def request_boundary(parsed, index):
 # -------------------------------------------------------------------- store
 
 def save(parsed):
-    from core import security
+    from core import security, settings, store
+
+    # With MongoDB configured the file is kept there, deleted after the same
+    # retention period, so a second server process can read it too.
+    if store.mongo_uri():
+        col = store.collection("boundaries")
+        col.delete_many({"expire_at": {"$lt": store.now_iso()}})
+        sha = parsed["file"]["sha256"]
+        col.delete(sha)
+        col.insert({"_id": sha, "created_at": store.now_iso(),
+                    "expire_at": store.iso_in(days=settings.upload_retention_days())},
+                   blob=store.pack(parsed))
+        return sha
 
     STORE.mkdir(parents=True, exist_ok=True)
     # Kept only long enough to pick a shape: a boundary file is the
@@ -473,6 +485,10 @@ def load(file_sha):
     if not (isinstance(file_sha, str) and len(file_sha) == 64
             and all(c in "0123456789abcdef" for c in file_sha)):
         raise UnreadableBoundary("Not a boundary file id.")
+    from core import store
+    if store.mongo_uri():
+        doc = store.collection("boundaries").get(file_sha, blob=True)
+        return store.unpack(doc["_blob"]) if doc and doc.get("_blob") is not None else None
     path = STORE / f"{file_sha}.json"
     if not path.exists():
         return None

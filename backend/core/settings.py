@@ -18,6 +18,20 @@ open.
     UPLOAD_RETENTION_DAYS  7       uploaded boundaries and overlay images
     JOB_WORKERS            2       analyses run at once in the background
     LOG_FORMAT             json    or "text"
+    SIGNUP_ENABLED         true    anyone may create an account (never admin)
+    SIGNUPS_PER_HOUR       10      new accounts per network address
+    MONGODB_URI            (none)  MongoDB Atlas connection string; without it
+                                   everything is kept in DATABASE_PATH (SQLite)
+    MONGODB_DB             antardrishti
+    SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD / MAIL_FROM
+                                   the mail server for verification and reset
+                                   emails (Gmail: smtp.gmail.com, 587, an app
+                                   password); without it no email is sent
+    EMAIL_VERIFICATION     true    new accounts must confirm their email
+                                   (only when SMTP is configured)
+    APP_URL                (none)  the public address used in emailed links;
+                                   without it the address of the request is used
+    RECENT_DAYS            7       unsaved analyses are kept this long
 """
 
 import os
@@ -74,6 +88,37 @@ def job_workers():
     return max(1, _int("JOB_WORKERS", 2))
 
 
+def signup_enabled():
+    return _bool("SIGNUP_ENABLED", True)
+
+
+def signups_per_hour():
+    return max(1, _int("SIGNUPS_PER_HOUR", 10))
+
+
+def smtp():
+    """{host, port, user, password, sender} or None when email is not set up."""
+    host = os.environ.get("SMTP_HOST", "").strip()
+    if not host:
+        return None
+    user = os.environ.get("SMTP_USER", "").strip()
+    return {"host": host, "port": _int("SMTP_PORT", 587), "user": user,
+            "password": os.environ.get("SMTP_PASSWORD", ""),
+            "sender": os.environ.get("MAIL_FROM", "").strip() or user}
+
+
+def email_verification_required():
+    return smtp() is not None and _bool("EMAIL_VERIFICATION", True)
+
+
+def app_url():
+    return os.environ.get("APP_URL", "").strip().rstrip("/") or None
+
+
+def recent_days():
+    return max(1, _int("RECENT_DAYS", 7))
+
+
 def log_format():
     return os.environ.get("LOG_FORMAT", "json").strip().lower()
 
@@ -84,6 +129,9 @@ def problems():
     if auth_required() and not secret_key():
         out.append("SECRET_KEY is not set: sessions are signed with a random key and "
                    "everyone is logged out on every restart")
+    if not smtp():
+        out.append("SMTP_HOST is not set: no verification or password-reset emails are "
+                   "sent (reset links are written to the server log instead)")
     if "*" in cors_origins():
         out.append("CORS_ORIGINS contains '*': any website can call this API from a "
                    "logged-in browser")

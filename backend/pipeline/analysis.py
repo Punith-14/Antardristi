@@ -549,6 +549,9 @@ def flood_layers(region, post_start, post_end, pre_start=None, pre_end=None,
         "terrain_excluded": (excluded.And(permanent.Not())
                              if excluded is not None else None),
         "sensor": detection["sensor"],
+        # The image itself, as the background of report pictures.
+        "composite": detection["internal"].get("composite"),
+        "true_colour": detection["internal"].get("true_colour"),
     }
 
 

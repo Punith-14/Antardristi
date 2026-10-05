@@ -1,454 +1,179 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 
-import { SIGNED_OUT, api, runAnalysis, runSeries } from './api'
-import { progressLine } from './lib/jobs'
-import { VIEW_ONLY, canRun, isAdmin } from './lib/session'
+import { SIGNED_OUT, api } from './api'
+import { navigate, toast, useRoute } from './hooks'
+import { hrefFor, isAppPage, redirectFor } from './lib/router'
+import { canRun, isAdmin } from './lib/session'
+import { firstName } from './lib/signup'
+import AccountPage from './components/AccountPage'
 import AdminUsers from './components/AdminUsers'
+import { ForgotPage, ResetPage, VerifyPage } from './components/AuthExtra'
+import AppShell from './components/AppShell'
+import HelpPage from './components/HelpPage'
+import HistoryPage from './components/HistoryPage'
+import Home from './components/Home'
+import Landing from './components/Landing'
 import Login from './components/Login'
-import { describeFootprint } from './lib/bbox'
-import { DEFAULT_METHOD, availability, findOption, methodOptions, requestFields } from './lib/methods'
-import { boundaryArea, boundaryFileProblem } from './lib/boundary'
-import AskPanel from './components/AskPanel'
-import HowItWorks from './components/HowItWorks'
-import MapView from './components/MapView'
-import QueryPanel from './components/QueryPanel'
-import ResultPanel from './components/ResultPanel'
-import SeriesPanel from './components/SeriesPanel'
-import './App.css'
+import Signup from './components/Signup'
+import Workspace from './components/Workspace'
 
-const DEFAULT_FORM = {
-  analysisType: 'flood_extent',
-  region: 'kerala',
-  postStart: '2018-08-15',
-  postEnd: '2018-08-25',
-  // No baseline by default. These used to be prefilled, which meant every
-  // analysis was a comparison whether or not the user asked for one - and the
-  // dates lived inside a collapsed section, so once it was closed the setting
-  // was invisible while still being sent. Someone changed the dates, drew an
-  // area, and got a change figure against a 2018 baseline they never chose.
-  preStart: '',
-  preEnd: '',
-  // Sensor and method for flood (lib/methods.js). Radar threshold unless
-  // chosen otherwise; the cloud limit is optical only and blank means default.
-  floodMethod: DEFAULT_METHOD,
-  cloudLimit: '',
+// Three.js and the orbit model load only when the Satellites page is opened.
+const SatellitesPage = lazy(() => import('./components/SatellitesPage'))
+import './App.css'
+import './site.css'
+
+function Splash() {
+  return (
+    <div className="splash" role="status">
+      <img src="/logo-mark.png" alt="" />
+      <span>Antardrishti</span>
+    </div>
+  )
 }
 
 /**
- * The session shell: who is signed in decides what is shown. The workspace
- * mounts only once the server has confirmed a session (or that sign-in is
- * switched off), so nothing in it ever runs signed out.
+ * Who is signed in, and which page the address points at, decide what is
+ * shown. The landing page, log in and sign up are public; everything under
+ * #/app needs a session (unless sign-in is switched off on the server).
  */
 export default function App() {
+  const route = useRoute()
   const [session, setSession] = useState({ loading: true })
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
     api.me()
-      .then((body) => setSession({ user: body.user, authRequired: body.auth_required }))
+      .then((body) => setSession({ user: body.user, authRequired: body.auth_required, signup: body.signup }))
       .catch((err) => setSession({ user: null, authRequired: true, offline: err.message }))
     const onSignedOut = () => {
-      setNotice('Your session ended. Please sign in again.')
+      setNotice('Your session ended. Please log in again.')
       setSession((s) => ({ ...s, user: null }))
     }
     window.addEventListener(SIGNED_OUT, onSignedOut)
     return () => window.removeEventListener(SIGNED_OUT, onSignedOut)
   }, [])
 
-  if (session.loading) return <div className="login-page"><p className="login-tagline">Loading…</p></div>
-  if (session.authRequired && !session.user) {
+  const admin = isAdmin(session.user, session.authRequired)
+  const redirect = session.loading ? null
+    : redirectFor(route, { user: session.user, authRequired: session.authRequired, isAdmin: admin })
+  const target = redirect ? hrefFor(redirect.page, redirect.params) : null
+
+  useEffect(() => {
+    if (target) navigate(target)
+  }, [target])
+
+  const next = route.params?.next
+  const signedIn = useCallback((user, { welcome = false, message = '' } = {}) => {
+    setNotice('')
+    setSession((s) => ({ ...s, user, authRequired: true }))
+    toast(message || (welcome ? `Welcome to Antardrishti, ${firstName(user)}` : `Welcome back, ${firstName(user)}`), 'ok')
+    navigate(hrefFor(isAppPage(next) ? next : 'home'))
+  }, [next])
+
+  const signOut = useCallback(async () => {
+    await api.logout().catch(() => {})
+    setSession((s) => ({ ...s, user: null }))
+    navigate(hrefFor('landing'))
+  }, [])
+
+  if (session.loading || target) return <Splash />
+
+  if (route.page === 'landing') return <Landing section={route.section} />
+  if (route.page === 'login') {
     return (
       <Login
         notice={notice || (session.offline ? `Cannot reach the server (${session.offline}).` : '')}
-        onSignedIn={(user) => { setNotice(''); setSession({ user, authRequired: true }) }}
+        onSignedIn={signedIn}
       />
     )
   }
+  if (route.page === 'signup') return <Signup signup={session.signup} onSignedIn={signedIn} />
+  if (route.page === 'forgot') return <ForgotPage signup={session.signup} />
+  if (route.page === 'reset') return <ResetPage token={route.params.token} onSignedIn={signedIn} />
+  if (route.page === 'verify') return <VerifyPage token={route.params.token} onSignedIn={signedIn} />
+
   return (
-    <Workspace
-      user={session.user}
-      authRequired={session.authRequired}
-      onSignOut={async () => {
-        await api.logout().catch(() => {})
-        setSession({ user: null, authRequired: true })
-      }}
-    />
+    <SignedIn key={session.user?.username || 'open'} session={session} route={route} admin={admin}
+      onSignOut={signOut} onUserChange={(user) => setSession((s) => ({ ...s, user }))} />
   )
 }
 
-function Workspace({ user, authRequired, onSignOut }) {
+/** Recent sign-ins across every account, for the admin. */
+function AdminLogins() {
+  const [events, setEvents] = useState(null)
+  useEffect(() => { api.adminLogins().then((b) => setEvents(b.events)).catch(() => setEvents([])) }, [])
+  return (
+    <div className="card table-card admin-logins">
+      <h3>Recent sign-ins</h3>
+      {events === null ? <p className="muted">Loading…</p> : (
+        <table className="history-table">
+          <thead><tr><th>When</th><th>Who</th><th>What</th><th>Result</th><th>Address</th></tr></thead>
+          <tbody>
+            {events.map((e, i) => (
+              <tr key={`${e.at}-${i}`}>
+                <td>{e.at?.replace('T', ' ').replace('Z', ' UTC')}</td><td>{e.username}</td><td>{e.kind}</td>
+                <td className={e.ok ? 'ok-text' : 'bad-text'}>{e.ok ? 'OK' : `Failed${e.detail ? `: ${e.detail}` : ''}`}</td>
+                <td>{e.address || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+/** Everything after logging in. The workspace stays mounted across pages. */
+function SignedIn({ session, route, admin, onSignOut, onUserChange }) {
+  const { user, authRequired } = session
   const mayRun = canRun(user, authRequired)
-  const [progress, setProgress] = useState(null)
-  const [showUsers, setShowUsers] = useState(false)
-  const track = useCallback((steps, jobStatus) => setProgress({ steps, status: jobStatus }), [])
   const [catalogue, setCatalogue] = useState(null)
-  const [form, setForm] = useState(DEFAULT_FORM)
-  const [result, setResult] = useState(null)
-  const [history, setHistory] = useState([])
-  const [status, setStatus] = useState('idle')
-  const [error, setError] = useState('')
-  const [selectedZone, setSelectedZone] = useState(null)
-  const [highlighted, setHighlighted] = useState(null)
-  // A shape drawn on the map, or null for a named region:
-  //   { kind: 'bbox',   bbox: [west, south, east, north] }
-  //   { kind: 'circle', centre: {lat, lng}, radiusKm }
-  // Lives here rather than in the form because the map owns the gesture and
-  // the query panel owns the name.
-  const [drawnArea, setDrawnArea] = useState(null)
-  // A monthly series, when one was asked for. Kept alongside `result` rather
-  // than replacing it: opening a month puts that month in `result` while the
-  // series stays, so "back to the series" costs nothing.
-  const [series, setSeries] = useState(null)
-  const [opening, setOpening] = useState(false)
-  // Kept apart from `error`, which the form panel shows. A refused question
-  // carries examples and what was understood, and belongs next to the box it
-  // came from; an upload failure belongs next to the upload.
-  const [askError, setAskError] = useState(null)
-  const [uploadFailure, setUploadFailure] = useState('')
-  const [showHow, setShowHow] = useState(false)
-  // An uploaded boundary file with several shapes, waiting for a pick; and
-  // the line shown beside the picker (progress or the reason it failed).
-  const [boundaryChoices, setBoundaryChoices] = useState(null)
-  const [boundaryMessage, setBoundaryMessage] = useState('')
+  const [catalogueError, setCatalogueError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const page = route.page
+  const inWorkspace = page === 'new' || page === 'ask'
 
   useEffect(() => {
-    api
-      .catalogue()
+    api.catalogue()
       .then(setCatalogue)
-      .catch((err) =>
-        setError(
-          `Cannot reach the backend at ${api.base}. Is uvicorn running? (${err.message})`,
-        ),
-      )
+      .catch((err) => setCatalogueError(`Cannot reach the server at ${api.base || 'this address'} (${err.message}).`))
   }, [])
 
-  // The flood option chosen in the form. The catalogue supplies the options
-  // and their measured accuracy; without it only the radar default exists.
-  const floodOption = findOption(methodOptions(catalogue), form.floodMethod)
-
-  const submit = useCallback(
-    async (override) => {
-      const query = override || form
-      let floodChoice
-      if (query.analysisType === 'flood_extent') {
-        const option = findOption(methodOptions(catalogue), query.floodMethod)
-        // The same rules the backend enforces, checked before sending, so the
-        // reason is shown in words instead of as a refused request.
-        const check = availability(option, query, query.latest ? 'latest' : 'single')
-        if (!check.ok) {
-          setStatus('error')
-          setError(check.reason)
-          return
-        }
-        floodChoice = requestFields(option, query)
-      }
-      setStatus('loading')
-      setProgress(null)
-      setError('')
-      setSelectedZone(null)
-
-      try {
-        const data = await runAnalysis({ ...query, area: drawnArea, floodChoice }, track)
-        setSeries(null)
-        setResult(data)
-        setStatus('done')
-        setHistory((current) =>
-          [
-            {
-              id: data.request_id || Date.now(),
-              // describeFootprint falls back to the region name, so named
-              // regions read as before. Drawn ones get their centre and size,
-              // because "user-defined rectangle" is the same string every
-              // time and three of them in a row tell you nothing.
-              label: `${data.analysis_label || 'Flood extent'} · ${describeFootprint(data.region)}`,
-              period: data.period?.post?.start,
-              data,
-            },
-            ...current.filter((h) => h.id !== data.request_id),
-          ].slice(0, 8),
-        )
-      } catch (err) {
-        setStatus('error')
-        setError(err.message)
-      }
-    },
-    [form, drawnArea, catalogue, track],
-  )
-
-  // Every single-result path lands the same way, so history, series state
-  // and zone selection cannot drift apart between them.
-  const showResult = useCallback((data, label) => {
-    setSeries(null)
-    setResult(data)
-    setSelectedZone(null)
-    setStatus('done')
-    setHistory((current) =>
-      [
-        {
-          id: data.request_id || Date.now(),
-          label,
-          period: data.period?.post?.start || '',
-          data,
-        },
-        ...current.filter((h) => h.id !== data.request_id),
-      ].slice(0, 8),
-    )
-  }, [])
-
-  const askQuestion = useCallback(async (question) => {
-    setStatus('loading')
-    setError('')
-    setAskError(null)
-    try {
-      setProgress(null)
-      const data = await api.ask({ question, area: drawnArea }, track)
-      showResult(data, question.length > 60 ? `${question.slice(0, 57)}…` : question)
-    } catch (err) {
-      setStatus('error')
-      setAskError(err)
-    }
-  }, [drawnArea, showResult, track])
-
-  const uploadImage = useCallback(async (file) => {
-    setStatus('loading')
-    setError('')
-    setUploadFailure('')
-    try {
-      const data = await api.uploadImage(file)
-      showResult(data, `Uploaded image · ${file.name}`)
-    } catch (err) {
-      setStatus('error')
-      setUploadFailure(err.message)
-    }
-  }, [showResult])
-
-  const submitSeries = useCallback(async () => {
-    const check = availability(floodOption, form, 'series')
-    if (!check.ok) {
-      setStatus('error')
-      setError(check.reason)
-      return
-    }
-    setStatus('loading')
-    setError('')
-    setSelectedZone(null)
-    try {
-      setProgress(null)
-      const data = await runSeries({ ...form, area: drawnArea,
-        floodChoice: requestFields(floodOption, form) }, track)
-      setSeries(data)
-      setResult(null)
-      setStatus('done')
-    } catch (err) {
-      setStatus('error')
-      setError(err.message)
-    }
-  }, [form, drawnArea, floodOption, track])
-
-  // One month of the series, as its own full analysis: evidence, zones, map
-  // layers and PDF. Fetched by id from the cache, so nothing is recomputed.
-  const openMonth = useCallback(async (requestId) => {
-    setOpening(true)
-    setError('')
-    try {
-      const data = await api.analysis(requestId)
-      setResult(data)
-      setSelectedZone(null)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setOpening(false)
-    }
-  }, [])
-
-  const uploadBoundary = useCallback(async (file) => {
-    const problem = boundaryFileProblem(file)
-    setBoundaryChoices(null)
-    if (problem) {
-      setBoundaryMessage(problem)
-      return
-    }
-    setBoundaryMessage(`Reading ${file.name}…`)
-    try {
-      const body = await api.parseBoundary(file)
-      if (body.boundary) {
-        setDrawnArea(boundaryArea(body.boundary))
-        setBoundaryMessage('')
-      } else {
-        setBoundaryChoices(body)
-        setBoundaryMessage('')
-      }
-    } catch (err) {
-      setBoundaryMessage(err.message)
-    }
-  }, [])
-
-  const pickBoundary = useCallback(async (index) => {
-    try {
-      const boundary = await api.boundaryFeature(boundaryChoices.file.sha256, index)
-      setDrawnArea(boundaryArea(boundary))
-      setBoundaryChoices(null)
-      setBoundaryMessage('')
-    } catch (err) {
-      setBoundaryMessage(err.message)
-    }
-  }, [boundaryChoices])
-
-  // The newest radar pass over the area, wherever the form's dates point.
-  const submitLatest = useCallback(() => submit({ ...form, latest: true }), [form, submit])
-
-  // One pass covered too little; re-run over the offered days, dates shown.
-  const extendLatest = useCallback((offer) => {
-    const next = { ...form, postStart: offer.post_start, postEnd: offer.post_end,
-      preStart: '', preEnd: '', latest: false }
-    setForm(next)
-    submit(next)
-  }, [form, submit])
-
-  const applyPreset = (preset) => {
-    const next = { ...DEFAULT_FORM, preStart: '', preEnd: '', ...preset }
-    setForm(next)
-    submit(next)
-  }
-
-  const jumpToEvidence = (id) => {
-    setHighlighted(id)
-    document.getElementById(`ev-${id}`)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-    })
-    setTimeout(() => setHighlighted(null), 2000)
-  }
+  // Each page starts at the top, the way a real site does.
+  useEffect(() => { window.scrollTo(0, 0) }, [page])
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <div>
-          <h1>Antardrishti</h1>
-          <p>Earth observation for India, with every number traceable</p>
-        </div>
-        <button type="button" className="how-link" onClick={() => setShowHow(true)}>
-          How it works
-        </button>
-        {user && (
-          <div className="user-menu">
-            <span title={`Signed in as ${user.username}`}>{user.username} · {user.role}</span>
-            {isAdmin(user, authRequired) && (
-              <button type="button" onClick={() => setShowUsers(true)}>Users</button>
-            )}
-            <button type="button" onClick={onSignOut}>Sign out</button>
+    <AppShell user={user} page={page} admin={admin} onSignOut={onSignOut} busy={busy}>
+      <Workspace
+        mode={page === 'ask' ? 'ask' : 'new'}
+        params={inWorkspace ? route.params : {}}
+        visible={inWorkspace}
+        catalogue={catalogue}
+        catalogueError={catalogueError}
+        mayRun={mayRun}
+        onBusy={setBusy}
+      />
+      {page === 'home' && <Home user={user} mayRun={mayRun} />}
+      {page === 'history' && <HistoryPage />}
+      {page === 'satellites' && (
+        <Suspense fallback={<main className="page wrap"><div className="table-loading"><span className="spinner dark" /> Loading the satellites…</div></main>}>
+          <SatellitesPage mayRun={mayRun} />
+        </Suspense>
+      )}
+      {page === 'help' && <HelpPage catalogue={catalogue} />}
+      {page === 'account' && <AccountPage user={user} onSignedOut={onSignOut} onUserChange={onUserChange} />}
+      {page === 'users' && admin && (
+        <main className="page wrap">
+          <div className="page-head">
+            <div>
+              <h1>Users</h1>
+              <p>Everyone with an account. New sign-ups get analyst access at once; only an admin can make another admin.</p>
+            </div>
           </div>
-        )}
-        <div className={`status status-${status}`}>
-          {status === 'loading' && 'Running'}
-          {status === 'done' && 'Ready'}
-          {status === 'error' && 'Error'}
-          {status === 'idle' && 'Idle'}
-        </div>
-      </header>
-
-      <main className="layout">
-        <aside className="column left">
-          {!mayRun && <p className="view-only">{VIEW_ONLY}</p>}
-          <AskPanel
-            disabled={!mayRun}
-            onAsk={askQuestion}
-            onUpload={uploadImage}
-            status={status}
-            askError={askError}
-            uploadFailure={uploadFailure}
-            drawnArea={drawnArea}
-          />
-
-          <QueryPanel
-            disabled={!mayRun}
-            catalogue={catalogue}
-            form={form}
-            onChange={setForm}
-            onSubmit={submit}
-            onSeries={submitSeries}
-            onLatest={submitLatest}
-            onPreset={applyPreset}
-            status={status}
-            error={error}
-          />
-
-          {history.length > 0 && (
-            <div className="panel history">
-              <h3>Recent</h3>
-              {history.map((item) => (
-                <button
-                  key={item.id}
-                  className={result?.request_id === item.id ? 'active' : ''}
-                  onClick={() => {
-                    setResult(item.data)
-                    setSelectedZone(null)
-                  }}
-                >
-                  <strong>{item.label}</strong>
-                  <span>{item.period}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </aside>
-
-        <section className="column centre">
-          <MapView
-            result={result}
-            selectedZone={selectedZone}
-            onSelectZone={setSelectedZone}
-            drawnArea={drawnArea}
-            onDrawArea={setDrawnArea}
-            onUploadBoundary={uploadBoundary}
-            boundaryChoices={boundaryChoices}
-            onPickBoundary={pickBoundary}
-            boundaryMessage={boundaryMessage}
-          />
-        </section>
-
-        <aside className="column right">
-          {status === 'loading' && (
-            <div className="panel progress-card" role="status" aria-live="polite">
-              <strong>{progress ? progressLine(progress.steps, progress.status) : 'Starting…'}</strong>
-              {progress?.steps?.length > 0 && (
-                <ol>{progress.steps.map((step) => <li key={step.text}>{step.text}</li>)}</ol>
-              )}
-              <small>Satellite analyses take one to two minutes the first time; repeats are instant.</small>
-            </div>
-          )}
-          {series && !result ? (
-            <SeriesPanel
-              key={series.points?.map((p) => p.request_id || p.label).join('|')}
-              series={series}
-              onOpenMonth={openMonth}
-              opening={opening}
-            />
-          ) : (
-            <>
-              {series && (
-                <button
-                  type="button"
-                  className="back-to-series"
-                  onClick={() => { setResult(null); setSelectedZone(null) }}
-                >
-                  ← Back to the monthly series
-                </button>
-              )}
-              <ResultPanel
-                result={result}
-                selectedZone={selectedZone}
-                onSelectZone={setSelectedZone}
-                highlighted={highlighted}
-                onCite={jumpToEvidence}
-                onExtend={extendLatest}
-              />
-            </>
-          )}
-        </aside>
-      </main>
-      {showHow && <HowItWorks catalogue={catalogue} onClose={() => setShowHow(false)} />}
-      {showUsers && <AdminUsers me={user} onClose={() => setShowUsers(false)} />}
-    </div>
+          <div className="card help-card"><AdminUsers me={user} inline /></div>
+          <AdminLogins />
+        </main>
+      )}
+    </AppShell>
   )
 }

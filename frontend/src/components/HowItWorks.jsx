@@ -10,19 +10,21 @@ import Term from './Term'
  * The accuracy table is read from /analyses - the same constants the
  * detectors use - so this page cannot quote a stale figure.
  */
-export default function HowItWorks({ catalogue, onClose }) {
+export default function HowItWorks({ catalogue, onClose, inline = false }) {
   const [query, setQuery] = useState('')
   const rows = accuracyRows(catalogue)
   const terms = searchGlossary(query)
 
   return (
-    <aside className="how-it-works" role="dialog" aria-label="How it works">
-      <div className="hiw-head">
-        <h2>How it works</h2>
-        <button type="button" onClick={onClose} aria-label="Close">×</button>
-      </div>
+    <aside className={inline ? 'how-inline' : 'how-it-works'} role={inline ? undefined : 'dialog'} aria-label="How it works">
+      {!inline && (
+        <div className="hiw-head">
+          <h2>How it works</h2>
+          <button type="button" onClick={onClose} aria-label="Close">×</button>
+        </div>
+      )}
 
-      <section>
+      <section id="hiw-steps">
         <h3>From satellite to answer</h3>
         <ol className="hiw-steps">
           {STEPS.map((step) => (
@@ -31,7 +33,7 @@ export default function HowItWorks({ catalogue, onClose }) {
         </ol>
       </section>
 
-      <section>
+      <section id="hiw-accuracy">
         <h3>How accurate is it?</h3>
         <p className="hiw-small">
           Scored against hand-mapped floods the methods were not tuned on.{' '}
@@ -57,7 +59,7 @@ export default function HowItWorks({ catalogue, onClose }) {
         )}
       </section>
 
-      <section>
+      <section id="hiw-limits">
         <h3>What it cannot do</h3>
         <ul className="hiw-limits">
           {LIMITS.map((limit) => (
@@ -68,7 +70,7 @@ export default function HowItWorks({ catalogue, onClose }) {
         </ul>
       </section>
 
-      <section>
+      <section id="hiw-glossary">
         <h3>Glossary</h3>
         <input
           className="hiw-search" value={query} placeholder="Search terms…"

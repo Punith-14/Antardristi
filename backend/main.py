@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 # Load .env before importing modules that read environment variables.
 load_dotenv()
 
+import threading
 import time
 
 from fastapi import FastAPI
@@ -23,6 +24,7 @@ from pydantic import BaseModel
 
 from pipeline import analysis
 from core import alignment
+from core import mailer
 from geo import regions
 from core import cache
 from geo import footprint
@@ -165,6 +167,20 @@ def _startup():
     if created:
         security.event("bootstrap admin created", username=created["username"])
     jobs.fail_interrupted()
+    if os.environ.get("MAINTENANCE_SWEEP", "true").lower() != "false":
+        def sweep():
+            while True:
+                try:
+                    purge_everything()
+                except Exception:                # noqa: BLE001 - a sweep must never stop the server
+                    pass
+                time.sleep(6 * 3600)
+        threading.Thread(target=sweep, name="maintenance-sweep", daemon=True).start()
+    if os.environ.get("SATELLITE_WARM", "true").lower() != "false":
+        # Orbits, ESA's plan and the latest image, fetched once in the
+        # background so the first visitor does not wait for three servers.
+        from orbits import service as satellite_service
+        threading.Thread(target=satellite_service.warm, name="satellite-warm", daemon=True).start()
     if settings.auth_required() and not auth.list_users():
         print("WARNING: no user accounts exist. Create an admin with\n"
               "    python -m scripts.manage_users create <username> --role admin\n"
@@ -1087,7 +1103,8 @@ def analysis_report_hindi(request_id: str):
 
 
 @app.get("/analyze/{request_id}/report.pdf")
-def analysis_pdf(request_id: str, ask_id: str | None = None, lang: str = "en"):
+def analysis_pdf(request: Request, request_id: str, ask_id: str | None = None, lang: str = "en",
+                 pictures: bool = True):
     """The stored analysis as a PDF, for the answer that has to leave the app.
 
     Rendered from the stored response for this request_id and nothing else -
@@ -1137,6 +1154,22 @@ def analysis_pdf(request_id: str, ask_id: str | None = None, lang: str = "en"):
         for key in ("question", "routing", "alignment", "understood"):
             if key in asked:
                 stored[key] = asked[key]
+
+    # Report pictures: the automatic ones (any not drawn yet are drawn now,
+    # within a time budget) and the ones this user captured. A flood result
+    # whose map can no longer be rebuilt simply has none.
+    if pictures and (stored.get("observation") or {}).get("sensor_used"):
+        try:
+            from core import pictures as report_pictures
+            try:
+                rebuilt, layers_for = _picture_layers(request_id)
+                stored.setdefault("region", {})["bbox"] = rebuilt["region"].get("bbox")
+            except HTTPException:
+                layers_for = None
+            stored["pictures"], stored["pictures_missing"] = report_pictures.for_report(
+                stored, request_id, _owner(request), layers_for)
+        except Exception:                        # noqa: BLE001 - pictures never block the PDF
+            stored["pictures"] = []
 
     try:
         from pipeline import export_pdf
@@ -1481,6 +1514,9 @@ def ready():
     except earth_engine.EarthEngineUnavailable as exc:
         checks["earth_engine"] = {"ok": False, "message": str(exc)}
     checks["groq_api_key"] = {"ok": bool(os.environ.get("GROQ_API_KEY"))}
+    from core import store
+    db_ok, db_detail = store.ping()
+    checks["database"] = {"ok": db_ok, "backend": store.backend_name(), "message": db_detail}
     try:
         checks["accounts"] = {"ok": (not settings.auth_required()) or bool(auth.list_users())}
     except Exception as exc:                     # noqa: BLE001
@@ -1499,26 +1535,195 @@ class LoginRequest(BaseModel):
 
 
 def _auth_error(exc):
-    return HTTPException(status_code=exc.status, detail={"error": "auth", "message": exc.message})
+    return HTTPException(status_code=exc.status, detail={"error": getattr(exc, "code", "auth"),
+                                                         "message": exc.message})
 
 
-@app.post("/auth/login")
-def login(payload: LoginRequest, request: Request):
-    """Check the password; set the session cookie and return the token."""
-    try:
-        user = auth.authenticate(payload.username, payload.password)
-    except auth.AuthError as exc:
-        security.event("login failed", username=payload.username[:40],
-                       address=request.client.host if request.client else None)
-        raise _auth_error(exc) from exc
+def _address(request):
+    return request.client.host if request.client else None
+
+
+def _base_url(request):
+    return str(request.base_url).rstrip("/")
+
+
+def _signed_in(user, request):
+    """The response that starts a session: cookie for the browser, token for scripts."""
     token, expires = auth.issue_token(user)
-    security.event("login", username=user["username"], role=user["role"])
     response = JSONResponse({"user": user, "token": token, "expires": expires})
     response.set_cookie(
         auth.COOKIE, token, max_age=settings.session_hours() * 3600, httponly=True,
         samesite="strict", path="/",
         secure=request.url.scheme == "https" or os.environ.get("COOKIE_SECURE") == "true")
     return response
+
+
+@app.post("/auth/login")
+def login(payload: LoginRequest, request: Request):
+    """Check the password; set the session cookie and return the token.
+
+    The username field also takes the email a self-registered account uses.
+    """
+    try:
+        user = auth.authenticate(payload.username, payload.password, address=_address(request))
+    except auth.AuthError as exc:
+        security.event("login failed", username=payload.username[:40],
+                       address=request.client.host if request.client else None)
+        raise _auth_error(exc) from exc
+    security.event("login", username=user["username"], role=user["role"])
+    return _signed_in(user, request)
+
+
+class SignupRequest(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    organisation: str = ""
+    user_type: str
+
+
+@app.post("/auth/signup")
+def signup(payload: SignupRequest, request: Request):
+    """Create an account and sign it in. The access comes with the account at
+    once (auth.SIGNUP_ROLE); admin can never be chosen here."""
+    if not settings.signup_enabled():
+        raise HTTPException(status_code=403, detail={
+            "error": "signup_closed", "message": "Sign-up is closed. Ask an admin for an account."})
+    address = request.client.host if request.client else "?"
+    allowed, retry = security.SIGNUP_LIMITER.allow(address, settings.signups_per_hour())
+    if not allowed:
+        raise HTTPException(status_code=429, headers={"Retry-After": str(retry)}, detail={
+            "error": "rate_limited",
+            "message": f"Too many new accounts from this network. Try again in {retry // 60 + 1} minutes."})
+    try:
+        user = auth.register(payload.full_name, payload.email, payload.password,
+                             payload.organisation, payload.user_type)
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    security.event("signup", username=user["username"], user_type=user["user_type"],
+                   role=user["role"], address=address)
+    auth.record_event(user["username"], "signup", True, address)
+    if not user["verified"]:
+        # Email verification is on: no session until the link is clicked.
+        url = mailer.link(_base_url(request), "verify", auth.verification_link_token(user["username"]))
+        mailer.send_verification(user, url)
+        return JSONResponse({"user": None, "verification_sent": True, "email": user["email"]})
+    return _signed_in(user, request)
+
+
+class TokenRequest(BaseModel):
+    token: str
+
+
+class EmailRequest(BaseModel):
+    email: str
+
+
+class ResetRequest(BaseModel):
+    token: str
+    password: str
+
+
+class PasswordChange(BaseModel):
+    current: str
+    new: str
+
+
+@app.get("/auth/password-rules")
+def password_rules():
+    """The rules the forms show as a live checklist."""
+    from core import passwords
+    return {"min_length": passwords.MIN_LENGTH,
+            "rules": [{"key": k, "label": label} for k, label in passwords.RULES]}
+
+
+@app.post("/auth/verify")
+def verify_email(payload: TokenRequest, request: Request):
+    """The link from the confirmation email: confirms the address and signs in."""
+    try:
+        user = auth.verify_email(payload.token)
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    return _signed_in(user, request)
+
+
+def _limited(request, what):
+    allowed, retry = security.SIGNUP_LIMITER.allow(f"{what}:{_address(request)}",
+                                                   settings.signups_per_hour())
+    if not allowed:
+        raise HTTPException(status_code=429, headers={"Retry-After": str(retry)}, detail={
+            "error": "rate_limited", "message": f"Too many requests. Try again in {retry // 60 + 1} minutes."})
+
+
+@app.post("/auth/resend")
+def resend_verification(payload: EmailRequest, request: Request):
+    """Send the confirmation email again. Says the same thing for any address."""
+    _limited(request, "resend")
+    user = auth.get_user((payload.email or "").strip().lower())
+    if user and not user["verified"]:
+        url = mailer.link(_base_url(request), "verify", auth.verification_link_token(user["username"]))
+        mailer.send_verification(user, url)
+    return {"sent": True, "message": "If that account is waiting for confirmation, a new link is on its way."}
+
+
+@app.post("/auth/forgot")
+def forgot_password(payload: EmailRequest, request: Request):
+    """Email a reset link. The answer is the same whether or not the account
+    exists, so this cannot be used to find out who has an account."""
+    _limited(request, "forgot")
+    doc, token = auth.reset_link_token(payload.email)
+    if doc is not None:
+        user = auth.get_user(doc["_id"])
+        address = user.get("email") or (user["username"] if "@" in user["username"] else None)
+        url = mailer.link(_base_url(request), "reset", token)
+        if address:
+            mailer.send_reset({**user, "email": address}, url)
+        else:
+            security.event("password reset link (no email on account)", username=user["username"], link=url)
+        auth.record_event(user["username"], "reset_requested", True, _address(request))
+    return {"sent": True, "message": "If an account uses that email, a reset link is on its way. "
+                                     "It works for 30 minutes."}
+
+
+@app.post("/auth/reset")
+def reset_password(payload: ResetRequest, request: Request):
+    """Set a new password from an emailed link; every old session ends."""
+    try:
+        user = auth.reset_password(payload.token, payload.password)
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    return _signed_in(user, request)
+
+
+@app.post("/auth/password")
+def change_password(payload: PasswordChange, request: Request):
+    """Change your own password. Other sessions end; this one continues."""
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise HTTPException(status_code=401, detail={"error": "login_required", "message": "Please sign in."})
+    try:
+        user = auth.change_password(user["username"], payload.current, payload.new)
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    return _signed_in(user, request)
+
+
+@app.post("/auth/logout-all")
+def logout_everywhere(request: Request):
+    """End every session of this account, this one included."""
+    user = getattr(request.state, "user", None)
+    if user is not None:
+        auth.sign_out_everywhere(user["username"])
+    response = JSONResponse({"signed_out": True})
+    response.delete_cookie(auth.COOKIE, path="/")
+    return response
+
+
+@app.get("/auth/activity")
+def my_activity(request: Request):
+    """Your recent sign-ins and account changes."""
+    user = getattr(request.state, "user", None)
+    return {"events": auth.events(user["username"] if user else None, limit=30)}
 
 
 @app.post("/auth/logout")
@@ -1530,9 +1735,14 @@ def logout():
 
 @app.get("/auth/me")
 def me(request: Request):
-    """Who is signed in (None if nobody), and whether sign-in is required."""
+    """Who is signed in (None if nobody), whether sign-in is required, and
+    what the sign-up page offers."""
     return {"user": getattr(request.state, "user", None),
-            "auth_required": settings.auth_required()}
+            "auth_required": settings.auth_required(),
+            "signup": {"enabled": settings.signup_enabled(),
+                       "verification": settings.email_verification_required(),
+                       "email": settings.smtp() is not None,
+                       "user_types": [{"key": k, "label": v} for k, v in auth.USER_TYPES.items()]}}
 
 
 # ---------------------------------------------------------- user admin
@@ -1592,16 +1802,32 @@ def admin_delete_user(username: str, request: Request):
     return {"deleted": username}
 
 
-@app.post("/admin/maintenance/purge")
-def admin_purge():
-    """Delete uploaded boundaries and photo overlays past the retention period."""
+@app.get("/admin/logins")
+def admin_logins(limit: int = 100):
+    """Recent sign-ins and account events, everyone's."""
+    return {"events": auth.events(None, limit=max(1, min(limit, 500)))}
+
+
+def purge_everything():
+    """Everything past its time: recent analyses nobody saved, their pictures,
+    spent links, old login records, uploads past retention."""
     from geo import boundary_upload
-    removed = {
+    from core import pictures as report_pictures
+    return {
+        "recent_analyses": jobs.purge_expired(),
+        "pictures": report_pictures.purge_expired(),
+        "links_and_login_records": auth.purge_expired(),
         "boundaries": security.purge_old_files(boundary_upload.STORE, patterns=("*.json",)),
         "overlays": security.purge_old_files(BASE_DIR / "outputs" / "images",
                                              patterns=("upload_*.png",)),
     }
-    return {"removed": removed, "retention_days": settings.upload_retention_days()}
+
+
+@app.post("/admin/maintenance/purge")
+def admin_purge():
+    """Delete what is past its retention period, now rather than at the next sweep."""
+    return {"removed": purge_everything(), "retention_days": settings.upload_retention_days(),
+            "recent_days": settings.recent_days()}
 
 
 # ------------------------------------------------------------- jobs
@@ -1616,6 +1842,14 @@ def job_analyze(payload: FloodRequest, request: Request):
     """Start a flood analysis in the background; poll GET /jobs/{id}."""
     job_id = jobs.submit("analyze", payload.model_dump(), _owner(request),
                          lambda: analyze(payload))
+    return {"job_id": job_id, "status_url": f"/jobs/{job_id}"}
+
+
+@app.post("/jobs/surface")
+def job_surface(payload: SurfaceRequest, request: Request):
+    """A vegetation / water / built-up / bare-ground analysis in the background."""
+    job_id = jobs.submit("surface", payload.model_dump(), _owner(request),
+                         lambda: analyze_surface(payload))
     return {"job_id": job_id, "status_url": f"/jobs/{job_id}"}
 
 
@@ -1635,6 +1869,233 @@ def job_series(payload: SeriesRequest, request: Request):
 @app.get("/jobs")
 def job_list(request: Request):
     return {"jobs": jobs.recent(getattr(request.state, "user", None))}
+
+
+# ------------------------------------------------------------- satellites
+
+@app.get("/satellites")
+def satellites():
+    """Where each active Sentinel-1 is (orbital elements for the browser to
+    propagate), ESA's next planned images over India, and the newest image of
+    India already in Earth Engine. Public: the landing page shows it. Every
+    source is cached, so this spends no quota per visit."""
+    from orbits import service as satellite_service
+    return satellite_service.summary()
+
+
+@app.get("/satellites/area")
+def satellites_area(region: str):
+    """The same for one state or district: its outline, ESA's planned images
+    over it, and its newest image in Earth Engine."""
+    from orbits import service as satellite_service
+    name = (region or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail={"error": "region_required",
+                                                     "message": "Name a state or district."})
+    try:
+        found = satellite_service.area(name)
+    except regions.RegionAmbiguous as exc:
+        raise HTTPException(status_code=409, detail={"error": "ambiguous_region",
+                                                     "message": str(exc), "matches": exc.matches}) from exc
+    if found is None:
+        raise HTTPException(status_code=404, detail={"error": "region_not_found",
+                                                     "message": str(regions.RegionNotFound(name))})
+    return found
+
+
+@app.get("/history")
+def history(request: Request, limit: int = 50, saved: bool = False):
+    """Your finished analyses, newest first, one short row each, and how much
+    of this hour's analysis allowance you have used. Unsaved ones are kept
+    for settings.recent_days(); `saved=true` lists only the saved ones."""
+    user = getattr(request.state, "user", None)
+    key = user["username"] if user else (request.client.host if request.client else "?")
+    return {"items": jobs.history(user, max(1, min(limit, 200)), saved_only=saved),
+            "usage": {"used": security.ANALYSIS_LIMITER.used(key),
+                      "limit": settings.analyses_per_hour()},
+            "recent_days": settings.recent_days()}
+
+
+class SaveRequest(BaseModel):
+    title: str | None = None
+    note: str | None = None
+
+
+def _history_or_404(row, job_id):
+    if row is None:
+        raise HTTPException(status_code=404, detail={"error": "not_found",
+                                                     "message": f"No analysis {job_id} of yours."})
+    return row
+
+
+@app.post("/history/{job_id}/save")
+def history_save(job_id: str, payload: SaveRequest, request: Request):
+    """Keep an analysis for good (it stops expiring), with a title and note."""
+    try:
+        row = jobs.save(job_id, getattr(request.state, "user", None), payload.title, payload.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"error": "not_finished", "message": str(exc)}) from exc
+    return _history_or_404(row, job_id)
+
+
+@app.post("/history/{job_id}/unsave")
+def history_unsave(job_id: str, request: Request):
+    """Back to recent: it will be deleted after settings.recent_days()."""
+    return _history_or_404(jobs.unsave(job_id, getattr(request.state, "user", None)), job_id)
+
+
+@app.patch("/history/{job_id}")
+def history_edit(job_id: str, payload: SaveRequest, request: Request):
+    return _history_or_404(jobs.edit(job_id, getattr(request.state, "user", None),
+                                     payload.title, payload.note), job_id)
+
+
+@app.delete("/history/{job_id}")
+def history_delete(job_id: str, request: Request):
+    if not jobs.delete(job_id, getattr(request.state, "user", None)):
+        raise HTTPException(status_code=404, detail={"error": "not_found",
+                                                     "message": f"No analysis {job_id} of yours."})
+    return {"deleted": job_id}
+
+
+# ------------------------------------------------------------- report pictures
+
+def _picture_layers(request_id):
+    """(stored result, layers_for(period), whole-area bbox) for a flood result.
+
+    layers_for('post') rebuilds the flood period's layers, ('pre') the
+    comparison period's - with the same rule, as the GeoTIFF download does.
+    """
+    stored, payload, geometry, sensor_used, _plan = _flood_rebuild(request_id)
+    cloud = (payload.cloud_limit if payload.cloud_limit is not None
+             else analysis.optical.DEFAULT_CLOUD_LIMIT)
+    built = {}
+
+    def layers_for(period):
+        if period not in built:
+            start, end = ((payload.pre_start, payload.pre_end) if period == "pre"
+                          else (payload.post_start, payload.post_end))
+            if not start:
+                raise LookupError("This analysis has no comparison period.")
+            built[period] = analysis.flood_layers(
+                geometry, start, end,
+                payload.pre_start if period == "post" else None,
+                payload.pre_end if period == "post" else None,
+                sensor=sensor_used, scale=payload.scale, cloud_limit=cloud,
+                method=(payload.method or "threshold") if period == "post" else "threshold",
+                terrain_check=payload.terrain_check)
+        return built[period]
+
+    whole = export_gis.region_bounds(geometry)
+    stored.setdefault("region", {})
+    if not stored["region"].get("bbox"):
+        stored["region"]["bbox"] = list(whole)
+    return stored, layers_for
+
+
+def _picture_error(exc):
+    if isinstance(exc, HTTPException):
+        return exc
+    if isinstance(exc, LookupError):
+        return HTTPException(status_code=404, detail={"error": "no_picture", "message": str(exc)})
+    if isinstance(exc, earth_engine.EarthEngineUnavailable):
+        return exc
+    return HTTPException(status_code=502, detail={
+        "error": "picture_failed", "message": f"Earth Engine could not draw the picture: {str(exc)[:160]}"})
+
+
+@app.get("/analyze/{request_id}/pictures")
+def analysis_pictures(request_id: str, request: Request):
+    """The report pictures of this result: automatic ones (drawn on first
+    view) and the ones you captured."""
+    from core import pictures as report_pictures
+    stored = _stored_flood_or_404(request_id)
+    if not stored.get("region", {}).get("bbox"):
+        # Overview needs an area; worked out from the zones when not stored.
+        outlines, _ = report_pictures.zone_features(stored)
+        boxes = [report_pictures.bbox_of(f["geometry"]) for f in outlines]
+        boxes = [b for b in boxes if b]
+        if boxes:
+            stored["region"]["bbox"] = [min(b[0] for b in boxes), min(b[1] for b in boxes),
+                                        max(b[2] for b in boxes), max(b[3] for b in boxes)]
+    return report_pictures.listing(stored, request_id, _owner(request))
+
+
+class CaptureRequest(BaseModel):
+    bbox: list[float] | None = None
+    centre: list[float] | None = None      # [lon, lat]
+    radius_km: float | None = None
+    caption: str | None = None
+    job_id: str | None = None
+
+
+@app.post("/analyze/{request_id}/pictures")
+def capture_picture(request_id: str, payload: CaptureRequest, request: Request):
+    """Draw a circle or box on the map; it becomes one of your report pictures."""
+    from core import pictures as report_pictures
+    if payload.centre and payload.radius_km:
+        lon, lat = payload.centre[:2]
+        if not (0.2 <= payload.radius_km <= 150):
+            raise HTTPException(status_code=422, detail={"error": "bad_shape",
+                                                         "message": "Draw a circle between 0.2 and 150 km across."})
+        bbox = report_pictures.circle_bbox(lon, lat, payload.radius_km)
+    elif payload.bbox and len(payload.bbox) == 4:
+        bbox = report_pictures.pad_bbox(payload.bbox, 0.02, 0.01)
+    else:
+        raise HTTPException(status_code=422, detail={"error": "bad_shape",
+                                                     "message": "Draw a circle or a box on the map."})
+    try:
+        stored, layers_for = _picture_layers(request_id)
+        return report_pictures.capture(request_id, stored, layers_for, _owner(request), bbox,
+                                       payload.caption, payload.job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"error": "too_many", "message": str(exc)}) from exc
+    except Exception as exc:                     # noqa: BLE001 - turned into words
+        raise _picture_error(exc) from exc
+
+
+@app.get("/pictures/{picture_id}.png")
+def picture_png(picture_id: str, request: Request):
+    """One report picture. An automatic one is drawn now if it has not been yet."""
+    from core import pictures as report_pictures
+    doc = report_pictures.get_png(picture_id)
+    if doc is None and "--" in picture_id:
+        request_id, kind = picture_id.split("--", 1)
+        try:
+            stored, layers_for = _picture_layers(request_id)
+            if kind not in dict(report_pictures.auto_kinds(stored)):
+                raise LookupError(f"No picture {kind!r} for this result.")
+            doc = report_pictures.ensure_auto(request_id, kind, stored, layers_for)
+        except Exception as exc:                 # noqa: BLE001
+            raise _picture_error(exc) from exc
+    if doc is None or doc.get("_blob") is None:
+        raise HTTPException(status_code=404, detail={"error": "not_found", "message": "No such picture."})
+    if doc.get("owner") not in (None, _owner(request)) and (getattr(request.state, "user", None) or {}).get("role") != "admin":
+        raise HTTPException(status_code=404, detail={"error": "not_found", "message": "No such picture."})
+    return Response(content=doc["_blob"], media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=3600"})
+
+
+class PictureChange(BaseModel):
+    caption: str | None = None
+    position: int | None = None
+
+
+@app.patch("/pictures/{picture_id}")
+def picture_edit(picture_id: str, payload: PictureChange, request: Request):
+    from core import pictures as report_pictures
+    found = report_pictures.update(picture_id, _owner(request), payload.caption, payload.position)
+    if found is None:
+        raise HTTPException(status_code=404, detail={"error": "not_found", "message": "No such picture of yours."})
+    return found
+
+
+@app.delete("/pictures/{picture_id}")
+def picture_delete(picture_id: str, request: Request):
+    from core import pictures as report_pictures
+    if not report_pictures.delete(picture_id, _owner(request)):
+        raise HTTPException(status_code=404, detail={"error": "not_found", "message": "No such picture of yours."})
+    return {"deleted": picture_id}
 
 
 @app.get("/jobs/{job_id}")

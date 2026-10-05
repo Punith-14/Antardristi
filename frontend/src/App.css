@@ -1,15 +1,25 @@
 :root {
-  --bg: #0d1117;
-  --panel: #161b22;
-  --panel-2: #1c2128;
-  --line: #30363d;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #2f81f7;
-  --good: #3fb950;
-  --moderate: #d29922;
-  --poor: #f85149;
-  --radius: 10px;
+  /* Theme A: navy and teal on a light page. Every component below reads
+     these, so the whole app follows them. */
+  --navy: #0B2545;
+  --navy-2: #13315C;
+  --teal: #0F8B8D;
+  --teal-dark: #0B6E70;
+  --teal-tint: #E3F4F4;
+  --bg: #F7F9FC;
+  --panel: #FFFFFF;
+  --panel-2: #F3F6FA;
+  --line: #DDE3EA;
+  --text: #1F2937;
+  --muted: #5F6B7A;
+  --accent: #0F8B8D;
+  --good: #1E7B3C;
+  --moderate: #B26A00;
+  --poor: #B42318;
+  --radius: 12px;
+  --shadow-sm: 0 1px 2px rgba(11, 37, 69, 0.06), 0 1px 3px rgba(11, 37, 69, 0.08);
+  --shadow-md: 0 6px 18px rgba(11, 37, 69, 0.10);
+  --shadow-lg: 0 18px 40px rgba(11, 37, 69, 0.16);
 }
 
 * { box-sizing: border-box; }
@@ -18,7 +28,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
 }
 
 .app { display: flex; flex-direction: column; height: 100vh; }
@@ -152,7 +162,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 .map-legend {
   position: absolute; bottom: 14px; left: 10px; z-index: 500;
-  background: rgba(22, 27, 34, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--line);
   padding: 9px 12px; border-radius: 8px; font-size: 11.5px;
 }
@@ -164,9 +174,9 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
    exists to prevent, so it has to be visible against the summary row. */
 .compare-active {
   margin-left: 8px;
-  background: rgba(88, 166, 255, 0.14);
-  border: 1px solid rgba(88, 166, 255, 0.5);
-  color: #58a6ff;
+  background: var(--teal-tint);
+  border: 1px solid var(--teal);
+  color: var(--teal);
   padding: 1px 7px; border-radius: 999px;
   font-size: 10.5px; white-space: nowrap;
 }
@@ -178,7 +188,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   padding: 5px 10px; border-radius: 6px;
   font-size: 11.5px; cursor: pointer;
 }
-.clear-baseline:hover { color: var(--text, #e6edf3); border-color: #f85149; }
+.clear-baseline:hover { color: var(--text); border-color: #f85149; }
 
 /* Draw-an-area toolbar. Sits above the Leaflet panes but below its controls,
    which live at 800. */
@@ -191,20 +201,20 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   max-width: calc(100% - 20px);
 }
 .draw-bar button {
-  background: rgba(22, 27, 34, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--line);
-  color: var(--text, #e6edf3);
+  color: var(--text);
   padding: 6px 11px; border-radius: 7px;
   font-size: 12px; cursor: pointer;
 }
-.draw-bar button:hover { background: rgba(31, 38, 48, 0.96); }
+.draw-bar button:hover { background: #F3F6FA; }
 .draw-bar button.drawing {
-  border-color: #58a6ff; color: #58a6ff;
+  border-color: var(--teal); color: var(--teal);
 }
 .draw-chip {
-  background: rgba(22, 27, 34, 0.94);
-  border: 1px solid #58a6ff;
-  color: #58a6ff;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--teal);
+  color: var(--teal);
   padding: 6px 10px; border-radius: 7px;
   font-size: 11.5px; white-space: nowrap;
 }
@@ -214,12 +224,12 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .draw-hint {
   position: absolute; bottom: 14px; right: 10px; z-index: 600;
   max-width: 320px;
-  background: rgba(22, 27, 34, 0.96);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--line);
   color: var(--muted);
   padding: 7px 11px; border-radius: 7px; font-size: 11.5px; line-height: 1.45;
 }
-.draw-hint-error { border-color: #f85149; color: #ffb4ae; }
+.draw-hint-error { border-color: #f85149; color: var(--poor); }
 
 /* Before/after swipe.
    The wrapper must not eat pointer events or the map stops panning, so only
@@ -232,7 +242,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
    like it had only one side. */
 .swipe-tag {
   position: absolute; top: 46px; z-index: 1;
-  background: rgba(22, 27, 34, 0.9);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--line);
   padding: 4px 9px; border-radius: 6px;
   font-size: 11px; color: var(--muted); white-space: nowrap;
@@ -254,16 +264,16 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   transform: translate(-50%, -50%);
   width: 38px; height: 38px; border-radius: 50%;
   display: grid; place-items: center;
-  background: rgba(22, 27, 34, 0.96);
-  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: var(--navy);
+  border: 2px solid #fff;
   color: #fff; font-size: 13px; letter-spacing: -1px;
   cursor: ew-resize;
   pointer-events: auto;
   /* Stops the browser claiming the gesture as a page scroll on touch. */
   touch-action: none;
 }
-.swipe-handle:hover { background: rgba(31, 38, 48, 0.96); }
-.swipe-handle:focus-visible { outline: 2px solid var(--accent, #58a6ff); outline-offset: 3px; }
+.swipe-handle:hover { background: #F3F6FA; }
+.swipe-handle:focus-visible { outline: 2px solid var(--accent, var(--teal)); outline-offset: 3px; }
 
 @media (max-width: 640px) {
   .swipe-handle { width: 44px; height: 44px; }
@@ -297,7 +307,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .report-text { margin: 0 0 10px; line-height: 1.65; font-size: 13.5px; }
 .cites { white-space: nowrap; }
 .cite {
-  background: rgba(47, 129, 247, 0.16);
+  background: var(--teal-tint);
   border: none; color: var(--accent);
   font-size: 10.5px; font-weight: 600;
   padding: 1px 5px; border-radius: 4px; margin: 0 1px;
@@ -321,7 +331,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .evidence { margin-bottom: 18px; }
 .evidence table { width: 100%; border-collapse: collapse; }
 .evidence tr { border-bottom: 1px solid var(--line); }
-.evidence tr.highlight { background: rgba(47, 129, 247, 0.14); }
+.evidence tr.highlight { background: rgba(15, 139, 141, 0.12); }
 .evidence td { padding: 7px 4px; vertical-align: top; font-size: 12.5px; }
 .ev-id { color: var(--accent); font-weight: 600; width: 34px; font-size: 11.5px; }
 .ev-name small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
@@ -596,7 +606,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 }
 .how-it-works {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); overflow-y: auto; z-index: 2000;
-  background: var(--panel, #161b22); border-left: 1px solid var(--line); padding: 16px 20px; box-shadow: -8px 0 24px rgba(0,0,0,.35);
+  background: var(--panel); border-left: 1px solid var(--line); padding: 16px 20px; box-shadow: var(--shadow-lg);
 }
 .hiw-head { display: flex; justify-content: space-between; align-items: center; }
 .hiw-head button { background: transparent; border: 0; color: var(--text); font-size: 22px; cursor: pointer; }
@@ -619,7 +629,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 .boundary-picker {
   position: absolute; top: 52px; left: 12px; z-index: 1000; max-width: 320px; max-height: 50%; overflow-y: auto;
-  background: var(--panel, #161b22); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px;
 }
 .boundary-picker ul { list-style: none; margin: 6px 0 0; padding: 0; }
 .boundary-picker li { margin: 3px 0; }
@@ -655,7 +665,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .login-card {
-  width: min(380px, 100%); background: var(--panel, #161b22); border: 1px solid var(--line);
+  width: min(380px, 100%); background: var(--panel); border: 1px solid var(--line);
   border-radius: 12px; padding: 28px 26px; display: flex; flex-direction: column; gap: 10px;
 }
 .login-card h1 { margin: 0; font-size: 22px; }

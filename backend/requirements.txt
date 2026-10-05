@@ -30,6 +30,11 @@ pyshp
 # the PDF rather than printed broken. Wheels exist for Windows.
 uharfbuzz
 
+# MongoDB Atlas (core/store.py). Used only when MONGODB_URI is set; without
+# it everything is kept in the SQLite file data/app.db.
+pymongo[srv]
+
 # Testing
 pytest
 requests
+mongomock

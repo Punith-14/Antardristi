@@ -81,3 +81,7 @@ secrets/
 
 # Result cache and OpenStreetMap lookups - regenerated, never committed.
 data/cache/
+
+# Raw Earth Engine export CSVs downloaded from Drive (notebooks 10, 11).
+# The combined tables beside them in evaluation/ are what is kept.
+evaluation/ee_exports/

@@ -46,6 +46,32 @@ import {
  */
 
 const INDIA_CENTRE = [22.0, 79.0]
+
+// Base maps. Street is OpenStreetMap; Satellite is Esri World Imagery with
+// Esri's place-name layer on top, so towns stay readable over the photo.
+// Both hosts are allowed by the page's content policy (core/security.py).
+const BASEMAPS = {
+  street: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    // OSM's tile policy requires a Referer; set here as well as by the
+    // server's header, so the map works however the page is served.
+    options: { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+      referrerPolicy: 'strict-origin-when-cross-origin' },
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    options: { attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics', maxZoom: 19 },
+    labels: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+  },
+}
+
+const LAYER_LABELS = {
+  overlay: 'Detected area',
+  baseline: 'Before period',
+  terrain: 'Not counted (terrain)',
+  zones: 'Zone outlines',
+  markers: 'Zone numbers',
+}
 const SEVERITY_COLOURS = { high: '#d7301f', moderate: '#fc8d59', low: '#fdcc8a' }
 
 export default function MapView({
@@ -58,6 +84,11 @@ export default function MapView({
   boundaryChoices,
   onPickBoundary,
   boundaryMessage,
+  visible = true,
+  busy = false,
+  captureMode = null,       // null | 'circle' | 'box': draw a picture for the report
+  onCapture,
+  onCancelCapture,
 }) {
   const fileRef = useRef(null)
   const containerRef = useRef(null)
@@ -71,12 +102,20 @@ export default function MapView({
   const ringRef = useRef({ outline: null, vertices: [], points: [] })
 
   const [drawing, setDrawing] = useState(null)   // null | 'box' | 'circle' | 'polygon'
+  // Capturing a report picture borrows the same gesture; it is the parent's
+  // state, so it is derived here rather than copied.
+  const activeDrawing = captureMode ? `capture-${captureMode}` : drawing
   const [drawError, setDrawError] = useState('')
   // Committed vertices of the polygon being drawn. State rather than a ref
   // because the hint line and the point count are rendered from it.
   const [ring, setRing] = useState([])
 
   const [swipe, setSwipe] = useState(50)
+  const [basemap, setBasemap] = useState('street')
+  const [layersOpen, setLayersOpen] = useState(false)
+  // Which result layers are shown. A layer the result lacks is simply absent.
+  const [shown, setShown] = useState({ overlay: true, baseline: true, terrain: true, zones: true, markers: true })
+  const baseRef = useRef({ tiles: null, labels: null })
 
   // Derived, not state. Storing it would mean setting it from inside the
   // redraw effect, which costs a second render pass on every result.
@@ -92,17 +131,34 @@ export default function MapView({
       zoomControl: true,
     })
 
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map)
-
     mapRef.current = map
     return () => {
       map.remove()
       mapRef.current = null
     }
   }, [])
+
+  // Swap the base map. Kept at the bottom of the stack so result layers stay on top.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !window.L) return
+    const { tiles, labels } = baseRef.current
+    if (tiles) map.removeLayer(tiles)
+    if (labels) map.removeLayer(labels)
+    const spec = BASEMAPS[basemap]
+    const next = window.L.tileLayer(spec.url, spec.options).addTo(map)
+    next.bringToBack()
+    const nextLabels = spec.labels ? window.L.tileLayer(spec.labels, { maxZoom: 19, pane: 'overlayPane' }).addTo(map) : null
+    baseRef.current = { tiles: next, labels: nextLabels }
+  }, [basemap])
+
+  // A map created while its page was hidden has no size; measure it again
+  // whenever it comes back into view.
+  useEffect(() => {
+    if (!visible) return undefined
+    const id = setTimeout(() => mapRef.current?.invalidateSize(), 60)
+    return () => clearTimeout(id)
+  }, [visible])
 
   // Redraw whenever a new result arrives.
   useEffect(() => {
@@ -216,6 +272,18 @@ export default function MapView({
     }
   }, [result, onSelectZone])
 
+  // Show or hide each result layer as ticked in the Layers panel.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    Object.entries(layersRef.current).forEach(([key, layer]) => {
+      if (!layer) return
+      const want = shown[key] !== false
+      if (want && !map.hasLayer(layer)) layer.addTo(map)
+      if (!want && map.hasLayer(layer)) map.removeLayer(layer)
+    })
+  }, [shown, result])
+
   // Clip the top layer to wherever the divider sits.
   //
   // Applied to the layer's own container rather than by redrawing tiles, so
@@ -246,20 +314,18 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current
     // Polygons are clicked, not dragged, and have their own effect below.
-    if (!map || !window.L || !drawing || drawing === 'polygon') return
+    if (!map || !window.L || !activeDrawing || activeDrawing === 'polygon') return
 
     const state = drawRef.current
-    const isCircle = drawing === 'circle'
+    const capturing = activeDrawing.startsWith('capture')
+    const isCircle = activeDrawing === 'circle' || activeDrawing === 'capture-circle'
     // Panning and drawing are the same gesture, so one has to give way.
     map.dragging.disable()
     map.getContainer().style.cursor = 'crosshair'
 
-    const style = {
-      color: '#58a6ff',
-      weight: 2,
-      fillOpacity: 0.12,
-      dashArray: '6 4',
-    }
+    const style = capturing
+      ? { color: '#FFB020', weight: 3, fillOpacity: 0.08, dashArray: '2 6' }
+      : { color: '#58a6ff', weight: 2, fillOpacity: 0.12, dashArray: '6 4' }
 
     const onDown = (event) => {
       state.active = true
@@ -323,6 +389,14 @@ export default function MapView({
       }
 
       setDrawError('')
+      if (capturing) {
+        if (state.rectangle) {
+          map.removeLayer(state.rectangle)
+          state.rectangle = null
+        }
+        onCapture?.(area)
+        return
+      }
       setDrawing(null)
       onDrawArea?.(area)
     }
@@ -339,7 +413,7 @@ export default function MapView({
       const container = map.getContainer()
       if (container) container.style.cursor = ''
     }
-  }, [drawing, onDrawArea])
+  }, [activeDrawing, onDrawArea, onCapture])
 
   // Clear the half-drawn ring's preview layers off the map. Called from
   // several places - finishing, cancelling, unmounting - so it is one
@@ -584,12 +658,70 @@ export default function MapView({
   )
 
   const hints = result?.map
+  const present = Object.keys(LAYER_LABELS).filter((key) => {
+    if (!result) return false
+    if (key === 'overlay') return Boolean(swipeLayers(result.artifacts).after)
+    if (key === 'baseline') return Boolean(swipeLayers(result.artifacts).before)
+    if (key === 'terrain') return Boolean(result.artifacts?.terrain_excluded_tiles)
+    const features = result.zones_geojson?.features || []
+    if (key === 'zones') return features.some((f) => f.properties?.kind === 'outline')
+    return hints?.show_zone_labels && features.some((f) => f.properties?.kind === 'marker')
+  })
 
   return (
-    <div className="map-wrap">
+    <div className={`map-wrap ${busy ? 'is-busy' : ''}`}>
       <div ref={containerRef} className="map" />
 
-      <div className="draw-bar">
+      <div className={`layer-control ${layersOpen ? 'is-open' : ''}`}>
+        <button type="button" className="layer-toggle" onClick={() => setLayersOpen((o) => !o)}
+          aria-expanded={layersOpen} title="Base map and layers">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 4l8 4l-8 4l-8 -4zM4 12l8 4l8 -4M4 16l8 4l8 -4" />
+          </svg>
+          <span>{basemap === 'street' ? 'Street' : 'Satellite'}</span>
+        </button>
+        {layersOpen && (
+          <div className="layer-panel">
+            <span className="layer-head">Base map</span>
+            <div className="seg seg-sm">
+              {Object.keys(BASEMAPS).map((key) => (
+                <button key={key} type="button" className={basemap === key ? 'on' : ''}
+                  onClick={() => setBasemap(key)}>{key === 'street' ? 'Street' : 'Satellite'}</button>
+              ))}
+            </div>
+            {present.length > 0 && <span className="layer-head">Layers</span>}
+            {present.map((key) => (
+              <label key={key} className="layer-check">
+                <input type="checkbox" checked={shown[key] !== false}
+                  onChange={(e) => setShown((s) => ({ ...s, [key]: e.target.checked }))} />
+                {LAYER_LABELS[key]}
+              </label>
+            ))}
+            {!present.length && <small className="layer-note">Layers appear here once a result is on the map.</small>}
+          </div>
+        )}
+      </div>
+
+      {busy && (
+        <div className="map-scan" aria-hidden="true">
+          <div className="scan-beam" />
+          <span className="scan-label">Reading satellite images…</span>
+        </div>
+      )}
+
+      {captureMode && (
+        <div className="capture-banner" role="status">
+          <span>
+            {captureMode === 'circle'
+              ? 'Press on the place and drag outwards to capture it.'
+              : 'Drag a box around the place to capture it.'}
+          </span>
+          <button type="button" onClick={onCancelCapture}>Cancel</button>
+        </div>
+      )}
+
+      <div className="draw-bar" hidden={Boolean(captureMode)}>
         {drawnArea ? (
           <>
             <span className="draw-chip" title="The area measured, not a district">
@@ -755,9 +887,9 @@ export default function MapView({
         </div>
       )}
 
-      {!result && (
+      {!result && !busy && (
         <div className="map-empty">
-          <p>Run an analysis to see it on the map.</p>
+          <p>Your result will be drawn here.</p>
         </div>
       )}
     </div>

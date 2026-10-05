@@ -29,7 +29,9 @@ $dist = Join-Path $frontend "dist\index.html"
 if ($Rebuild -or -not (Test-Path $dist)) {
     Write-Host "Building the web app..." -ForegroundColor Cyan
     Push-Location $frontend
-    if (-not (Test-Path "node_modules")) { npm ci --no-audit --no-fund }
+    # install picks up packages added since the last build (three.js and
+    # satellite.js arrived with the Satellites page); it is quick when nothing changed.
+    npm install --no-audit --no-fund
     npm run build
     Pop-Location
 }

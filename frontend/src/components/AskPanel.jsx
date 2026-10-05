@@ -21,8 +21,8 @@ import {
  * pixels, never an area of ground - the panel says so before anyone uploads,
  * so the number does not arrive as a surprise.
  */
-export default function AskPanel({ onAsk, onUpload, status, askError, uploadFailure, drawnArea, disabled = false }) {
-  const [question, setQuestion] = useState('')
+export default function AskPanel({ onAsk, onUpload, status, askError, uploadFailure, drawnArea, disabled = false, initialQuestion = '' }) {
+  const [question, setQuestion] = useState(initialQuestion)
   const [localError, setLocalError] = useState('')
   const [file, setFile] = useState(null)
   const [uploadError, setUploadError] = useState('')

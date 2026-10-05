@@ -95,6 +95,11 @@ async function upload(path, formData) {
   return body
 }
 
+/** A report picture's address (the API serves the PNG). */
+export function pictureUrl(path) {
+  return path && path.startsWith('/pictures/') ? `${BASE}${path}` : null
+}
+
 /** A file the backend serves (an upload overlay, say) as a full URL. */
 export function assetUrl(path) {
   if (!path || typeof path !== 'string' || !path.startsWith('/outputs/')) return null
@@ -153,6 +158,43 @@ export const api = {
   login: (username, password) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => request('/auth/logout', { method: 'POST' }),
+  /** Self sign-up: the account works at once, with the access every new account gets. */
+  signup: (form) =>
+    request('/auth/signup', { method: 'POST', body: JSON.stringify(form) }),
+  // ---- account
+  resendVerification: (email) => request('/auth/resend', { method: 'POST', body: JSON.stringify({ email }) }),
+  verifyEmail: (token) => request('/auth/verify', { method: 'POST', body: JSON.stringify({ token }) }),
+  forgotPassword: (email) => request('/auth/forgot', { method: 'POST', body: JSON.stringify({ email }) }),
+  resetPassword: (token, password) =>
+    request('/auth/reset', { method: 'POST', body: JSON.stringify({ token, password }) }),
+  changePassword: (current, next) =>
+    request('/auth/password', { method: 'POST', body: JSON.stringify({ current, new: next }) }),
+  logoutEverywhere: () => request('/auth/logout-all', { method: 'POST' }),
+  activity: () => request('/auth/activity'),
+  adminLogins: () => request('/admin/logins'),
+
+  // ---- saving analyses
+  saveJob: (jobId, title, note) =>
+    request(`/history/${encodeURIComponent(jobId)}/save`, { method: 'POST', body: JSON.stringify({ title, note }) }),
+  unsaveJob: (jobId) => request(`/history/${encodeURIComponent(jobId)}/unsave`, { method: 'POST' }),
+  editJob: (jobId, change) =>
+    request(`/history/${encodeURIComponent(jobId)}`, { method: 'PATCH', body: JSON.stringify(change) }),
+  deleteJob: (jobId) => request(`/history/${encodeURIComponent(jobId)}`, { method: 'DELETE' }),
+
+  // ---- report pictures
+  pictures: (requestId) => request(`/analyze/${encodeURIComponent(requestId)}/pictures`),
+  capturePicture: (requestId, shape) =>
+    request(`/analyze/${encodeURIComponent(requestId)}/pictures`, { method: 'POST', body: JSON.stringify(shape) }),
+  editPicture: (id, change) =>
+    request(`/pictures/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(change) }),
+  deletePicture: (id) => request(`/pictures/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /** Live satellite status for India: orbital elements, ESA's plan, newest image. Public. */
+  satellites: () => request('/satellites'),
+  /** The same for one state or district. */
+  satelliteArea: (region) => request(`/satellites/area?region=${encodeURIComponent(region)}`),
+  /** Your finished analyses, newest first, plus this hour's usage. */
+  history: (limit = 50) => request(`/history?limit=${limit}`),
   users: () => request('/admin/users'),
   createUser: (user) => request('/admin/users', { method: 'POST', body: JSON.stringify(user) }),
   updateUser: (username, change) =>
@@ -163,9 +205,12 @@ export const api = {
   job: (id) => request(`/jobs/${encodeURIComponent(id)}`),
   runJob: async (kind, payload, onProgress) => {
     const { job_id: id } = await request(`/jobs/${kind}`, { method: 'POST', body: JSON.stringify(payload) })
-    return waitForJob(() => api.job(id), {
+    const result = await waitForJob(() => api.job(id), {
       onProgress, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     })
+    // Which job produced it, so the result can be saved from where it is shown.
+    if (result && typeof result === 'object') result._job = { id, saved: false, title: null, note: null }
+    return result
   },
 
   /** Read an uploaded boundary file: its shapes, checked and simplified. */
@@ -226,7 +271,8 @@ export function runAnalysis({
     }
     return api.runJob('analyze', { ...common, sensor: 'sentinel-1', ...(floodChoice || {}) }, onProgress)
   }
-  return api.surface({ ...common, analysis_type: analysisType })
+  // In the background like flood, so it shows progress and lands in History.
+  return api.runJob('surface', { ...common, analysis_type: analysisType }, onProgress)
 }
 
 /**

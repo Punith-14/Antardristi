@@ -80,6 +80,12 @@ and an incident id, and the user sees only the incident id.
 | CSRF | cookie-authenticated changes need the `X-Requested-With` header |
 | CORS | only the origins in `CORS_ORIGINS` (the built app needs none) |
 | Quota | per-user hourly limit on analyses (`ANALYSES_PER_HOUR`) |
+| Sign-up | anyone may create an account and gets analyst access at once; admin is never self-chosen. `SIGNUP_ENABLED=false` closes it; `SIGNUPS_PER_HOUR` limits new accounts per address |
+| Base maps | OpenStreetMap (street) and Esri World Imagery (satellite); both are allowed in the content policy and credited on the map |
+| Database | `MONGODB_URI` set: users, History, results, pictures and login records live in MongoDB Atlas (results compressed). Unset: the same in `data/app.db` (SQLite). Move existing local data once with `python -m scripts.migrate_to_mongo --write` |
+| Email | `SMTP_HOST` etc. set: new accounts confirm their email, and "Forgot password" emails a 30-minute link. Unset: no email, no confirmation step, reset links in the server log |
+| Retention | unsaved analyses and their pictures are deleted after `RECENT_DAYS` (7); a sweep runs every 6 hours |
+| Satellites page | the server fetches orbital elements from celestrak.org (at most every 2 h) and ESA's acquisition plans from sentinels.copernicus.eu (page every 6 h, each KML once), caching both under `data/cache/orbits`; the browser only ever talks to this server. Allow outbound HTTPS to both hosts. `SATELLITE_WARM=false` skips the background fetch at start-up |
 | Uploads | 25 MB request limit, zip-bomb check, uploaded files deleted after `UPLOAD_RETENTION_DAYS` |
 | Files served | only upload overlays; the cache, raw data and uploaded boundaries are never served |
 | Headers | nosniff, no framing, no referrer, a content-security policy for the app |

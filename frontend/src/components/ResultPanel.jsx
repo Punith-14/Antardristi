@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import { useCountUp } from '../hooks'
+import Icon from './Icon'
+import PicturesTab from './PicturesTab'
+import { periodText, summaryCards } from '../lib/summary'
+
 import { api, assetUrl, citationSegments, gisLinks, pdfUrl } from '../api'
 import {
   alignmentView,
@@ -380,12 +385,17 @@ function Places({ result }) {
  * Engine, so its delivery scale is asked for when the menu opens and stated
  * before anyone waits for it.
  */
-function Downloads({ result }) {
+function Downloads({ result, open = false }) {
   const links = gisLinks(result)
   const [plan, setPlan] = useState(null)
   const [planError, setPlanError] = useState('')
-  if (!links.length) return null
   const tif = links.find((l) => l.key === 'geotiff')
+  // Shown open in the Downloads tab, so the GeoTIFF's scale is fetched at once.
+  useEffect(() => {
+    if (!open || !tif) return
+    api.floodPlan(tif.planPath).then(setPlan).catch((err) => setPlanError(err.message))
+  }, [open, tif?.planPath]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!links.length) return null
 
   const onToggle = (event) => {
     if (!event.currentTarget.open || !tif || plan || planError) return
@@ -393,7 +403,7 @@ function Downloads({ result }) {
   }
 
   return (
-    <details className="downloads" onToggle={onToggle}>
+    <details className="downloads" onToggle={onToggle} open={open || undefined}>
       <summary>GIS files</summary>
       <ul>
         {links.map((link) => {
@@ -427,7 +437,7 @@ function Downloads({ result }) {
  * most readers need the dates (shown above), researchers need the IDs. The
  * Earth Engine snippet loads the same scenes again.
  */
-function Scenes({ result }) {
+function Scenes({ result, open = false }) {
   const [copied, setCopied] = useState(null)
   const windows = sceneWindows(result.scenes)
   const missing = missingScenesLine(result)
@@ -445,7 +455,7 @@ function Scenes({ result }) {
   }
 
   return (
-    <details className="scenes">
+    <details className="scenes" open={open || undefined}>
       <summary>Satellite scenes used ({sceneCount(result.scenes)})</summary>
       {windows.map((w) => (
         <div key={w.key} className="scene-window">
@@ -595,14 +605,109 @@ function Zones({ zones, summary, selected, onSelect }) {
   )
 }
 
-export default function ResultPanel({ result, selectedZone, onSelectZone, highlighted, onCite, onExtend }) {
+function SummaryCard({ card, index }) {
+  const text = useCountUp(card)
+  return (
+    <div className={`metric metric-${card.key}`} style={{ '--delay': `${index * 90}ms` }} title={card.hint}>
+      <span className="metric-label">{card.label}</span>
+      <span className="metric-value">{text}</span>
+    </div>
+  )
+}
+
+/** Which tabs a result has, in order. Empty ones are left out, not shown blank. */
+function tabsFor(result) {
+  const tabs = [{ key: 'report', label: 'Report' }]
+  if (result.districts?.rows?.length || result.districts?.error) tabs.push({ key: 'districts', label: 'Districts' })
+  if (result.zones?.length || placesPath(result)) tabs.push({ key: 'zones', label: 'Zones' })
+  if (sceneWindows(result.scenes).length || missingScenesLine(result)) tabs.push({ key: 'images', label: 'Images' })
+  const flood = !result.analysis_label || result.analysis_label === 'Flood extent'
+  if (flood && result.request_id && result.observation?.sensor_used && !isUpload(result)) tabs.push({ key: 'pictures', label: 'Pictures' })
+  if (pdfUrl(result) || gisLinks(result).length) tabs.push({ key: 'downloads', label: 'Downloads' })
+  return tabs
+}
+
+function defaultTitle(result) {
+  const parts = [result.analysis_label || 'Flood extent', result.region?.name, periodText(result.period?.post)]
+  return parts.filter(Boolean).join(' · ').slice(0, 120)
+}
+
+/** Save: recent runs are kept a week; saved ones for good, with a title and a note. */
+function SaveBar({ result, job, onSave, onUnsave }) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  if (!job?.id) return null
+
+  const start = () => {
+    setTitle(job.title || defaultTitle(result))
+    setNote(job.note || '')
+    setOpen(true)
+  }
+  const submit = async (event) => {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      await onSave(title, note)
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="save-bar">
+      {job.saved ? (
+        <div className="saved-line">
+          <span className="saved-chip"><Icon name="bookmark" size={14} /> Saved</span>
+          <strong title={job.title || ''}>{job.title}</strong>
+          <button type="button" className="link-btn" onClick={start}><Icon name="edit" size={14} /> Edit</button>
+          <button type="button" className="link-btn muted-link" onClick={onUnsave}>Unsave</button>
+        </div>
+      ) : (
+        !open && (
+          <div className="saved-line">
+            <button type="button" className="btn btn-primary btn-sm" onClick={start}><Icon name="bookmark" size={15} /> Save</button>
+            <small className="muted">Not saved: kept for a week, then removed.</small>
+          </div>
+        )
+      )}
+      {open && (
+        <form className="save-form" onSubmit={submit}>
+          <label className="field"><span>Title</span>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} autoFocus /></label>
+          <label className="field"><span>Note <em>(optional)</em></span>
+            <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000}
+              placeholder="For the DDMA meeting on Monday" /></label>
+          <div className="save-actions">
+            <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </form>
+      )}
+    </div>
+  )
+}
+
+export default function ResultPanel({ result, selectedZone, onSelectZone, highlighted, onCite, onExtend,
+  job, onSave, onUnsave, pictureTick = 0, capturing = null, onStartCapture, onCancelCapture }) {
+  const [tab, setTab] = useState('report')
+  const [shownFor, setShownFor] = useState(result?.request_id)
+  // A new result opens on its report, whatever tab the last one was left on.
+  if (result?.request_id !== shownFor) {
+    setShownFor(result?.request_id)
+    setTab('report')
+  }
+
   if (!result) {
     return (
       <div className="panel result-panel empty">
-        <h2>No analysis yet</h2>
+        <div className="empty-art" aria-hidden="true"><span /><span /><span /></div>
+        <h2>Your results will appear here</h2>
         <p>
-          Pick what to measure, a region and a date range. Everything reported
-          here is traceable to a computed statistic.
+          Choose what to measure, an area and dates, then run. Every number shown
+          is traceable to a computed statistic.
         </p>
       </div>
     )
@@ -610,76 +715,97 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
 
   const noData = result.unobserved?.reason === 'no_usable_imagery'
   const pdf = pdfUrl(result)
+  const cards = summaryCards(result)
+  const tabs = noData ? [{ key: 'report', label: 'Report' }] : tabsFor(result)
+  const active = tabs.some((t) => t.key === tab) ? tab : 'report'
+  const verified = result.verification?.passed
+
+  // When a citation is clicked from anywhere, the evidence lives on the report tab.
+  const cite = (id) => {
+    setTab('report')
+    setTimeout(() => onCite(id), 60)
+  }
 
   return (
-    <div className="panel result-panel">
-      <div className="panel-head">
-        <h2>
-          {result.analysis_label || 'Flood extent'} · {result.region?.name}
-        </h2>
-        {periodLine(result.period) && <p>{periodLine(result.period)}</p>}
-        {pdf && (
-          // A plain link rather than a fetch. The server's
-          // Content-Disposition: attachment is what makes it download and
-          // names the file; the `download` attribute alone would be ignored,
-          // because the API is on a different origin from this page.
-          <a
-            className="pdf-link"
-            href={pdf}
-            download
-            title="Finding, evidence record, caveats and provenance on paper"
-          >
-            Download PDF
-          </a>
+    <div className="panel result-panel" key={result.request_id}>
+      <div className="result-head">
+        <div>
+          <h2>{result.region?.name || 'Your area'}</h2>
+          <p>
+            {result.analysis_label || 'Flood extent'}
+            {periodLine(result.period) ? ` · ${periodLine(result.period)}` : ''}
+          </p>
+        </div>
+        {result.verification && (
+          <span className={`pill ${verified ? 'pill-ok' : 'pill-warn'}`}>{verified ? 'Checked' : 'Check failed'}</span>
         )}
-        {/* Keyed by result: a plan fetched for one analysis must not show under another. */}
-        <Downloads key={result.request_id} result={result} />
       </div>
 
-      <Understood result={result} />
-      <Freshness acquisition={result.acquisition} latest={result.latest} onExtend={onExtend} />
+      <SaveBar result={result} job={job} onSave={onSave} onUnsave={onUnsave} />
 
-      {noData ? (
-        <section className="no-data">
-          <h3>Nothing could be observed</h3>
-          <p>{result.report?.text}</p>
-          <small>
-            This is not a finding of absence. The satellite did not see the
-            ground.
-          </small>
-        </section>
-      ) : (
-        <>
-          {isUpload(result) && <UploadPreview result={result} />}
-          <Report
-            key={`report-${result.request_id}`}
-            result={result}
-            report={result.report}
-            verification={result.verification}
-            onCite={onCite}
-          />
-          <People population={result.population} />
-          {terrainLine(result.terrain) && (
-            <p className={`terrain-line ${result.terrain.applied ? '' : 'terrain-off'}`}>
-              {terrainLine(result.terrain)}
-            </p>
-          )}
-          <Coverage
-            observation={result.observation}
-            unobserved={result.unobserved}
-          />
-          <Evidence evidence={result.evidence} highlighted={highlighted} />
-          <Districts districts={result.districts} />
-          <Zones
-            zones={result.zones}
-            summary={result.zones_summary}
-            selected={selectedZone}
-            onSelect={onSelectZone}
-          />
-          <Places key={`places-${result.request_id}`} result={result} />
-          <Scenes key={result.request_id} result={result} />
-        </>
+      {cards.length > 0 && (
+        <div className="summary-grid">
+          {cards.map((card, i) => <SummaryCard key={card.key} card={card} index={i} />)}
+        </div>
       )}
+
+      <div className="tabs" role="tablist">
+        {tabs.map((t) => (
+          <button key={t.key} type="button" role="tab" aria-selected={active === t.key}
+            className={active === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>{t.label}</button>
+        ))}
+      </div>
+
+      <div className="tab-body" key={active}>
+        {active === 'report' && (
+          <>
+            <Understood result={result} />
+            <Freshness acquisition={result.acquisition} latest={result.latest} onExtend={onExtend} />
+            {noData ? (
+              <section className="no-data">
+                <h3>Nothing could be observed</h3>
+                <p>{result.report?.text}</p>
+                <small>This is not a finding of absence. The satellite did not see the ground.</small>
+              </section>
+            ) : (
+              <>
+                {isUpload(result) && <UploadPreview result={result} />}
+                <Report key={`report-${result.request_id}`} result={result} report={result.report}
+                  verification={result.verification} onCite={cite} />
+                <People population={result.population} />
+                {terrainLine(result.terrain) && (
+                  <p className={`terrain-line ${result.terrain.applied ? '' : 'terrain-off'}`}>{terrainLine(result.terrain)}</p>
+                )}
+                <Coverage observation={result.observation} unobserved={result.unobserved} />
+                <Evidence evidence={result.evidence} highlighted={highlighted} />
+              </>
+            )}
+          </>
+        )}
+        {active === 'districts' && <Districts districts={result.districts} />}
+        {active === 'zones' && (
+          <>
+            <Zones zones={result.zones} summary={result.zones_summary} selected={selectedZone} onSelect={onSelectZone} />
+            <Places key={`places-${result.request_id}`} result={result} />
+          </>
+        )}
+        {active === 'images' && <Scenes key={result.request_id} result={result} open />}
+        {active === 'pictures' && (
+          <PicturesTab result={result} job={job} tick={pictureTick} capturing={capturing}
+            onStartCapture={onStartCapture} onCancelCapture={onCancelCapture} />
+        )}
+        {active === 'downloads' && (
+          <div className="downloads-tab">
+            {pdf && (
+              <a className="download-row" href={pdf} download>
+                <span><strong>Full report</strong><small>PDF: finding, evidence, caveats and provenance</small></span>
+                <span className="btn btn-outline btn-sm">Download</span>
+              </a>
+            )}
+            <Downloads key={result.request_id} result={result} open />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

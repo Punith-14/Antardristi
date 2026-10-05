@@ -860,6 +860,31 @@ def render(result, exported_at=None):
             table.setStyle(_grid())
             story.append(table)
 
+    # --- report pictures --------------------------------------------------------
+    # The analysed map itself: overview, zone close-ups, before/after and the
+    # views the user captured, each already labelled with legend, scale and credit.
+    report_pictures = result.get("pictures") or []
+    if report_pictures or result.get("pictures_missing"):
+        from reportlab.platypus import Image as PdfImage
+        story.append(Paragraph("Pictures", h2))
+        for title, caption, png in report_pictures:
+            try:
+                picture = PdfImage(BytesIO(png))
+                ratio = picture.imageHeight / float(picture.imageWidth or 1)
+                width = 174 * mm
+                height = min(width * ratio, 200 * mm)
+                picture.drawWidth, picture.drawHeight = height / ratio, height
+                block = [picture]
+                if caption:
+                    block.append(Paragraph(para(caption), small))
+                block.append(Spacer(1, 6))
+                story.append(KeepTogether(block))
+            except Exception:                    # noqa: BLE001 - a bad image is skipped, not fatal
+                continue
+        if result.get("pictures_missing"):
+            story.append(Paragraph(para("Not included (Earth Engine did not draw them in time): "
+                                        + ", ".join(result["pictures_missing"]) + "."), small))
+
     # --- villages and roads ---------------------------------------------------
     places = doc_data["places"]
     if places:

@@ -39,12 +39,18 @@ _os.environ.pop("ADMIN_USERNAME", None)
 _os.environ.pop("ADMIN_PASSWORD", None)
 _os.environ["ANALYSES_PER_HOUR"] = "100000"
 _os.environ["LOG_FORMAT"] = "text"
+_os.environ["SATELLITE_WARM"] = "false"
+_os.environ["MAINTENANCE_SWEEP"] = "false"
+_os.environ["MAIL_SYNC"] = "1"
+_os.environ.pop("MONGODB_URI", None)
+_os.environ.pop("SMTP_HOST", None)
 
 
 @pytest.fixture(autouse=True)
 def _fresh_rate_limits():
     from core import security
     security.ANALYSIS_LIMITER.reset()
+    security.SIGNUP_LIMITER.reset()
     yield
 
 

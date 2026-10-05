@@ -23,7 +23,7 @@ for path in (BACKEND, TESTS):
 
 from core import auth, security  # noqa: E402
 
-PASSWORD = "correct horse battery"
+PASSWORD = "Correct-Horse-Battery-7"
 
 
 @pytest.fixture
@@ -43,10 +43,10 @@ def test_passwords_are_salted_hashes_and_verify(db):
 
 
 def test_weak_passwords_and_bad_usernames_are_refused(db):
-    with pytest.raises(auth.AuthError, match="at least 10"):
-        auth.create_user("asha", "short")
-    with pytest.raises(auth.AuthError, match="must not contain the username"):
-        auth.create_user("asha.k", "asha.k-is-great")
+    with pytest.raises(auth.AuthError, match="at least 8"):
+        auth.create_user("asha", "Sh0rt!")
+    with pytest.raises(auth.AuthError, match="must not contain your name"):
+        auth.create_user("asha.k", "Asha.k-is-great-9")
     with pytest.raises(auth.AuthError, match="Usernames"):
         auth.create_user("a b", PASSWORD)
 
@@ -55,7 +55,7 @@ def test_a_bad_login_never_says_which_part_was_wrong_and_locks_after_five(db):
     auth.create_user("asha", PASSWORD, "analyst")
     for _ in range(auth.MAX_FAILURES):
         with pytest.raises(auth.AuthError) as info:
-            auth.authenticate("asha", "nope nope nope")
+            auth.authenticate("asha", "Nope-nope-nope-1")
         assert info.value.status == 401
     with pytest.raises(auth.AuthError) as info:
         auth.authenticate("asha", PASSWORD)
@@ -292,8 +292,8 @@ def test_a_refusal_inside_a_job_keeps_its_status_and_message(app, monkeypatch):
 def test_jobs_left_running_by_a_restart_are_marked_failed(db):
     from core import jobs
     job_id = jobs.submit("analyze", {}, "x", lambda: {"ok": True}, run_inline=True)
-    with jobs._db() as connection:
-        connection.execute("UPDATE jobs SET status = 'running' WHERE id = ?", (job_id,))
+    from core import store
+    store.collection("jobs").update(job_id, set={"status": "running"})
     jobs.fail_interrupted()
     job = jobs.get(job_id)
     assert job["status"] == "failed" and job["error"]["detail"]["error"] == "interrupted"
@@ -346,7 +346,8 @@ def test_a_signed_out_caller_can_ask_whether_sign_in_is_needed(app):
     client, _ = app
     response = client.get("/auth/me")
     assert response.status_code == 200
-    assert response.json() == {"user": None, "auth_required": True}
+    body = response.json()
+    assert body["user"] is None and body["auth_required"] is True
     token = login(client, "viewer1")
     assert client.get("/auth/me", headers=bearer(token)).json()["user"]["username"] == "viewer1"
 

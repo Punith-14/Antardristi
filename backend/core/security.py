@@ -57,11 +57,13 @@ def event(message, **fields):
 
 # ------------------------------------------------------------------ headers
 
-# Leaflet and its tiles: OpenStreetMap and Earth Engine tile servers are
-# images from other origins; everything else is this origin.
+# Leaflet and its tiles: OpenStreetMap, Esri World Imagery (the satellite
+# base map) and Earth Engine tile servers are images from other origins;
+# everything else is this origin.
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
-    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://earthengine.googleapis.com; "
+    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://earthengine.googleapis.com "
+    "https://server.arcgisonline.com; "
     "style-src 'self' 'unsafe-inline'; "
     "script-src 'self'; "
     "connect-src 'self'; "
@@ -71,7 +73,11 @@ CONTENT_SECURITY_POLICY = (
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
+    # Not "no-referrer": OpenStreetMap's tile servers refuse requests that
+    # carry no Referer ("Access blocked" tiles). This sends only the origin
+    # (http://127.0.0.1:8000) to other sites - never a path - and the full
+    # address only within this site, which is also the browsers' default.
+    "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
 }
 
@@ -123,12 +129,19 @@ class RateLimiter:
             q.append(now)
             return True, 0
 
+    def used(self, key, now=None):
+        """How many hits `key` has in the current window (nothing is recorded)."""
+        now = now if now is not None else time.monotonic()
+        with self.lock:
+            return sum(1 for t in self.hits.get(key, ()) if now - t < self.window_s)
+
     def reset(self):
         with self.lock:
             self.hits.clear()
 
 
 ANALYSIS_LIMITER = RateLimiter()
+SIGNUP_LIMITER = RateLimiter()
 
 # Requests that spend Earth Engine or Groq quota.
 QUOTA_PATHS = ("/analyze", "/ask", "/jobs", "/analyze/series", "/analyze/surface",
@@ -138,7 +151,7 @@ QUOTA_PATHS = ("/analyze", "/ask", "/jobs", "/analyze/series", "/analyze/surface
 def spends_quota(method, path):
     if method != "POST":
         return path.endswith("/report/hi") or path.endswith("/export/flood.zip") \
-            or path.endswith("/places")
+            or path.endswith("/places") or path == "/satellites/area"
     return any(path == p or path.startswith(p + "/") for p in QUOTA_PATHS)
 
 

@@ -6,9 +6,13 @@ against a 150 EECU-hour monthly budget. Running the same query twice is money
 and time thrown away, and during a demo it is the difference between an instant
 answer and an awkward silence.
 
-Deliberately simple: on-disk JSON keyed by a hash of the request. Survives a
-restart, needs no service, and can be inspected by hand. Swap for Redis if this
-ever runs more than one process.
+Keyed by a hash of the request. Two homes, chosen by core/store.py:
+
+    MongoDB (MONGODB_URI set)  the `analyses` collection, the result
+                               compressed - about 8x smaller, which matters
+                               on the 512 MB free Atlas tier
+    otherwise                  one JSON file per result under data/cache,
+                               which survives a restart and can be read by hand
 """
 
 import hashlib
@@ -41,8 +45,22 @@ def _path(key):
     return CACHE_DIR / f"{key}.json"
 
 
+def _mongo_entry(key):
+    from core import store
+    if not store.mongo_uri():
+        return False
+    doc = store.collection("analyses").get(key, blob=True)
+    if not doc or doc.get("_blob") is None:
+        return None
+    return {"stored_at": doc.get("stored_at_ts", 0), "request": doc.get("request"),
+            "response": store.unpack(doc["_blob"])}
+
+
 def get_by_id(request_id):
     """Stored response by request_id, ignoring TTL."""
+    entry = _mongo_entry(request_id)
+    if entry is not False:
+        return (entry or {}).get("response")
     path = _path(request_id)
     if not path.exists():
         return None
@@ -59,6 +77,9 @@ def request_by_id(request_id):
     What a download rebuilds from: Earth Engine images are not stored, so a
     GeoTIFF is recomputed from the same request that produced the numbers.
     """
+    entry = _mongo_entry(request_id)
+    if entry is not False:
+        return (entry or {}).get("request")
     path = _path(request_id)
     if not path.exists():
         return None
@@ -74,15 +95,18 @@ def get(payload, ttl=DEFAULT_TTL_SECONDS):
     if os.environ.get("ANTARDRISHTI_NO_CACHE"):
         return None
 
-    path = _path(_key(payload))
-    if not path.exists():
+    entry = _mongo_entry(_key(payload))
+    if entry is None:
         return None
-
-    try:
-        with path.open(encoding="utf-8") as fh:
-            entry = json.load(fh)
-    except (json.JSONDecodeError, OSError):
-        return None
+    if entry is False:
+        path = _path(_key(payload))
+        if not path.exists():
+            return None
+        try:
+            with path.open(encoding="utf-8") as fh:
+                entry = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            return None
 
     if ttl and time.time() - entry.get("stored_at", 0) > ttl:
         return None
@@ -97,12 +121,25 @@ def get(payload, ttl=DEFAULT_TTL_SECONDS):
 
 
 def put(payload, response):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _path(_key(payload))
-
     # Never cache the internal Earth Engine objects; they are not serialisable
     # and are meaningless in another process.
     stored = {k: v for k, v in response.items() if not k.startswith("_")}
+
+    from core import store
+    if store.mongo_uri():
+        try:
+            col = store.collection("analyses")
+            key = _key(payload)
+            col.delete(key)
+            col.insert({"_id": key, "request": json.loads(json.dumps(payload, default=str)),
+                        "stored_at": store.now_iso(), "stored_at_ts": time.time()},
+                       blob=store.pack(stored))
+        except Exception:                        # noqa: BLE001 - a failed cache write must never fail the request
+            pass
+        return response
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = _path(_key(payload))
 
     try:
         with path.open("w", encoding="utf-8") as fh:
@@ -114,6 +151,9 @@ def put(payload, response):
 
 
 def clear():
+    from core import store
+    if store.mongo_uri():
+        return store.collection("analyses").delete_many({})
     if not CACHE_DIR.exists():
         return 0
     removed = 0
@@ -127,6 +167,9 @@ def clear():
 
 
 def stats():
+    from core import store
+    if store.mongo_uri():
+        return {"entries": store.collection("analyses").count(), "backend": "mongodb"}
     if not CACHE_DIR.exists():
         return {"entries": 0, "bytes": 0}
     files = list(CACHE_DIR.glob("*.json"))

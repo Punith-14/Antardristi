@@ -9,7 +9,7 @@ const ROLE_HELP = {
 }
 
 /** User management for administrators: create, change role, disable, delete. */
-export default function AdminUsers({ me, onClose }) {
+export default function AdminUsers({ me, onClose, inline = false }) {
   const [users, setUsers] = useState([])
   const [draft, setDraft] = useState({ username: '', password: '', role: 'viewer' })
   const [message, setMessage] = useState('')
@@ -31,17 +31,23 @@ export default function AdminUsers({ me, onClose }) {
   }
 
   return (
-    <aside className="how-it-works admin-users" role="dialog" aria-label="Users">
-      <div className="hiw-head">
-        <h2>Users</h2>
-        <button type="button" onClick={onClose} aria-label="Close">×</button>
-      </div>
+    <aside className={inline ? 'how-inline admin-users' : 'how-it-works admin-users'} role={inline ? undefined : 'dialog'} aria-label="Users">
+      {!inline && (
+        <div className="hiw-head">
+          <h2>Users</h2>
+          <button type="button" onClick={onClose} aria-label="Close">×</button>
+        </div>
+      )}
       <table className="hiw-table">
-        <thead><tr><th>User</th><th>Role</th><th>Last sign-in</th><th /></tr></thead>
+        <thead><tr><th>User</th><th>Who</th><th>Role</th><th>Last sign-in</th><th /></tr></thead>
         <tbody>
           {users.map((u) => (
             <tr key={u.username} className={u.active ? '' : 'user-disabled'}>
-              <td>{u.username}{!u.active && <small> disabled</small>}</td>
+              <td>
+                {u.full_name || u.username}{!u.active && <small> disabled</small>}
+                {u.full_name && <small>{u.username}</small>}
+              </td>
+              <td>{u.user_type_label || '—'}{u.organisation && <small>{u.organisation}</small>}</td>
               <td>
                 <select value={u.role} disabled={u.username === me?.username}
                   onChange={(e) => act(api.updateUser(u.username, { role: e.target.value }), `${u.username} is now ${e.target.value}`)}>
