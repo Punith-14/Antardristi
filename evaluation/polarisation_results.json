@@ -1,0 +1,556 @@
+{
+  "dataset": "Sen1Floods11 HandLabeled",
+  "chips_scored": 441,
+  "question": "Is the 0.489 missing recall recoverable with VH or VV+VH fusion?",
+  "baseline": {
+    "method": "VV -17 dB",
+    "iou": 0.441,
+    "recall": 0.511
+  },
+  "tuned_thresholds": {
+    "vh_db": -23.0,
+    "double_bounce_gap_db": 14.0
+  },
+  "vh_sweep": {
+    "-30.0": {
+      "iou": 0.21238407978600227,
+      "precision": 0.8885424892390417,
+      "recall": 0.21819710329308806,
+      "f1": 0.350357751024725,
+      "accuracy": 0.9142166298879832,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 2335932,
+      "fp": 293016,
+      "fn": 8369673,
+      "tn": 89984693,
+      "valid_pixels": 100983314
+    },
+    "-29.0": {
+      "iou": 0.2585966609269465,
+      "precision": 0.8772835115591224,
+      "recall": 0.2683019782627885,
+      "f1": 0.4109285666410272,
+      "accuracy": 0.918451289883396,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 2872335,
+      "fp": 401789,
+      "fn": 7833270,
+      "tn": 89875920,
+      "valid_pixels": 100983314
+    },
+    "-28.0": {
+      "iou": 0.3103141367250991,
+      "precision": 0.8616525892082375,
+      "recall": 0.32658602666547104,
+      "f1": 0.47364846036184116,
+      "accuracy": 0.9230499407060457,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 3496301,
+      "fp": 561368,
+      "fn": 7209304,
+      "tn": 89716341,
+      "valid_pixels": 100983314
+    },
+    "-27.0": {
+      "iou": 0.36392018430026535,
+      "precision": 0.8397280086034739,
+      "recall": 0.39108429649702187,
+      "f1": 0.5336385347020405,
+      "accuracy": 0.9275334735003844,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 4186794,
+      "fp": 799099,
+      "fn": 6518811,
+      "tn": 89478610,
+      "valid_pixels": 100983314
+    },
+    "-26.0": {
+      "iou": 0.4141965770055692,
+      "precision": 0.8098489884640852,
+      "recall": 0.4588177875047697,
+      "f1": 0.5857694520553745,
+      "accuracy": 0.9312065258622826,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 4911922,
+      "fp": 1153310,
+      "fn": 5793683,
+      "tn": 89124399,
+      "valid_pixels": 100983314
+    },
+    "-25.0": {
+      "iou": 0.4555248966776974,
+      "precision": 0.7707372478550361,
+      "recall": 0.5269229529765016,
+      "f1": 0.6259252558543711,
+      "accuracy": 0.9332310385456354,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 5641029,
+      "fp": 1677975,
+      "fn": 5064576,
+      "tn": 88599734,
+      "valid_pixels": 100983314
+    },
+    "-24.0": {
+      "iou": 0.4816400909985072,
+      "precision": 0.7205843645158064,
+      "recall": 0.592249854165178,
+      "f1": 0.6501445174501456,
+      "accuracy": 0.9324266680334932,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 6340393,
+      "fp": 2458567,
+      "fn": 4365212,
+      "tn": 87819142,
+      "valid_pixels": 100983314
+    },
+    "-23.0": {
+      "iou": 0.4876628090792808,
+      "precision": 0.6590143010077724,
+      "recall": 0.6522393643329826,
+      "f1": 0.6556093304249461,
+      "accuracy": 0.9273551470097328,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 6982617,
+      "fp": 3612930,
+      "fn": 3722988,
+      "tn": 86664779,
+      "valid_pixels": 100983314
+    },
+    "-22.0": {
+      "iou": 0.4716263356924569,
+      "precision": 0.5866855065572875,
+      "recall": 0.7062985230633859,
+      "f1": 0.6409593580296162,
+      "accuracy": 0.9161133194737499,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 7561353,
+      "fp": 5326903,
+      "fn": 3144252,
+      "tn": 84950806,
+      "valid_pixels": 100983314
+    },
+    "-21.0": {
+      "iou": 0.43551536748588837,
+      "precision": 0.50720220989552,
+      "recall": 0.7549847953478575,
+      "f1": 0.6067721423959881,
+      "accuracy": 0.8962594751049664,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 8082569,
+      "fp": 7853026,
+      "fn": 2623036,
+      "tn": 82424683,
+      "valid_pixels": 100983314
+    },
+    "-20.0": {
+      "iou": 0.38447138202243963,
+      "precision": 0.4254827760647081,
+      "recall": 0.7995507026459504,
+      "f1": 0.5554053150030487,
+      "accuracy": 0.8642962539335954,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 8559674,
+      "fp": 11557883,
+      "fn": 2145931,
+      "tn": 78719826,
+      "valid_pixels": 100983314
+    },
+    "-19.0": {
+      "iou": 0.32604623584443704,
+      "precision": 0.3475371670599925,
+      "recall": 0.8405765951573966,
+      "f1": 0.49175696447237094,
+      "accuracy": 0.8157999251242636,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 8998881,
+      "fp": 16894410,
+      "fn": 1706724,
+      "tn": 73383299,
+      "valid_pixels": 100983314
+    },
+    "-18.0": {
+      "iou": 0.26863453107497737,
+      "precision": 0.27907081442005666,
+      "recall": 0.8778014880989912,
+      "f1": 0.4235018431152901,
+      "accuracy": 0.7466443911713969,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 9397396,
+      "fp": 24276480,
+      "fn": 1308209,
+      "tn": 66001229,
+      "valid_pixels": 100983314
+    },
+    "-17.0": {
+      "iou": 0.21858737561863384,
+      "precision": 0.22339282656456322,
+      "recall": 0.9104067448780335,
+      "f1": 0.35875535885584686,
+      "accuracy": 0.6549735335483247,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 9746455,
+      "fp": 33882766,
+      "fn": 959150,
+      "tn": 56394943,
+      "valid_pixels": 100983314
+    },
+    "-16.0": {
+      "iou": 0.17912637093842446,
+      "precision": 0.18128798530487147,
+      "recall": 0.9375888611619801,
+      "f1": 0.30382896244761987,
+      "accuracy": 0.5444974503411524,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 10037456,
+      "fp": 45330008,
+      "fn": 668149,
+      "tn": 44947701,
+      "valid_pixels": 100983314
+    },
+    "-15.0": {
+      "iou": 0.15043970939720705,
+      "precision": 0.1514185613911381,
+      "recall": 0.9587994326336531,
+      "f1": 0.2615342780127653,
+      "accuracy": 0.42598785181480575,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 10264528,
+      "fp": 57524572,
+      "fn": 441077,
+      "tn": 32753137,
+      "valid_pixels": 100983314
+    },
+    "-14.0": {
+      "iou": 0.13105262376794588,
+      "precision": 0.13151003535446718,
+      "recall": 0.9741460664763925,
+      "f1": 0.23173567880752022,
+      "accuracy": 0.31524780420654447,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 10428823,
+      "fp": 68871764,
+      "fn": 276782,
+      "tn": 21405945,
+      "valid_pixels": 100983314
+    }
+  },
+  "gap_sweep": {
+    "5.0": {
+      "iou": 0.1329695625353546,
+      "precision": 0.13436082222162518,
+      "recall": 0.92775363933192,
+      "f1": 0.23472751066285638,
+      "accuracy": 0.3586776623314224,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 9932164,
+      "fp": 63989414,
+      "fn": 773441,
+      "tn": 26288295,
+      "valid_pixels": 100983314
+    },
+    "6.0": {
+      "iou": 0.15141532287373913,
+      "precision": 0.15420361192850093,
+      "recall": 0.8933205549803117,
+      "f1": 0.26300730911906217,
+      "accuracy": 0.46924477047762564,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 9563537,
+      "fp": 52455354,
+      "fn": 1142068,
+      "tn": 37822355,
+      "valid_pixels": 100983314
+    },
+    "7.0": {
+      "iou": 0.17848722750675824,
+      "precision": 0.18418213981841866,
+      "recall": 0.8523451033360562,
+      "f1": 0.30290905720611166,
+      "accuracy": 0.5841044788845017,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 9124870,
+      "fp": 40417773,
+      "fn": 1580735,
+      "tn": 49859936,
+      "valid_pixels": 100983314
+    },
+    "8.0": {
+      "iou": 0.21596327418838526,
+      "precision": 0.22766918016995275,
+      "recall": 0.8077029742830975,
+      "f1": 0.35521348180936396,
+      "accuracy": 0.6891364646638553,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 8646949,
+      "fp": 29333374,
+      "fn": 2058656,
+      "tn": 60944335,
+      "valid_pixels": 100983314
+    },
+    "9.0": {
+      "iou": 0.26383292721405516,
+      "precision": 0.28744850173880354,
+      "recall": 0.7625476561109811,
+      "f1": 0.4175123491926078,
+      "accuracy": 0.7744327840141986,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 8163534,
+      "fp": 20236454,
+      "fn": 2542071,
+      "tn": 70041255,
+      "valid_pixels": 100983314
+    },
+    "10.0": {
+      "iou": 0.31837452915193915,
+      "precision": 0.36339774652233475,
+      "recall": 0.7198651547483771,
+      "f1": 0.482980400655552,
+      "accuracy": 0.8366119673988913,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 7706592,
+      "fp": 13500452,
+      "fn": 2999013,
+      "tn": 76777257,
+      "valid_pixels": 100983314
+    },
+    "11.0": {
+      "iou": 0.3714661611944964,
+      "precision": 0.4496648880981856,
+      "recall": 0.6811261017009315,
+      "f1": 0.5417066373274031,
+      "accuracy": 0.8778204486337218,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 7291867,
+      "fp": 8924358,
+      "fn": 3413738,
+      "tn": 81353351,
+      "valid_pixels": 100983314
+    },
+    "12.0": {
+      "iou": 0.41419634865102906,
+      "precision": 0.5350883765624831,
+      "recall": 0.6470549772759223,
+      "f1": 0.585769223695312,
+      "accuracy": 0.9029828333817604,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 6927115,
+      "fp": 6018625,
+      "fn": 3778490,
+      "tn": 84259084,
+      "valid_pixels": 100983314
+    },
+    "13.0": {
+      "iou": 0.4421587033927082,
+      "precision": 0.6084464702638736,
+      "recall": 0.6180082302681633,
+      "f1": 0.6131900772813986,
+      "accuracy": 0.9173413441353291,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 6616152,
+      "fp": 4257692,
+      "fn": 4089453,
+      "tn": 86020017,
+      "valid_pixels": 100983314
+    },
+    "14.0": {
+      "iou": 0.4564443694529941,
+      "precision": 0.6639661907972196,
+      "recall": 0.5935610364850935,
+      "f1": 0.6267927275855016,
+      "accuracy": 0.925065273655012,
+      "water_prevalence": 0.1060136033959036,
+      "tp": 6354430,
+      "fp": 3215982,
+      "fn": 4351175,
+      "tn": 87061727,
+      "valid_pixels": 100983314
+    }
+  },
+  "methods": {
+    "VV only -17 dB (ships today)": {
+      "micro": {
+        "iou": 0.44129818631821266,
+        "precision": 0.763574864261823,
+        "recall": 0.5111397254055235,
+        "f1": 0.6123620920463464,
+        "accuracy": 0.9313960423204174,
+        "water_prevalence": 0.1060136033959036,
+        "tp": 5472060,
+        "fp": 1694310,
+        "fn": 5233545,
+        "tn": 88583399,
+        "valid_pixels": 100983314
+      },
+      "macro": {
+        "iou": 0.23896388558678755,
+        "precision": 0.45894429842477774,
+        "recall": 0.3384981299846972,
+        "f1": 0.31948287123957664,
+        "accuracy": 0.9297493173449792
+      }
+    },
+    "VH only -23 dB": {
+      "micro": {
+        "iou": 0.4876628090792808,
+        "precision": 0.6590143010077724,
+        "recall": 0.6522393643329826,
+        "f1": 0.6556093304249461,
+        "accuracy": 0.9273551470097328,
+        "water_prevalence": 0.1060136033959036,
+        "tp": 6982617,
+        "fp": 3612930,
+        "fn": 3722988,
+        "tn": 86664779,
+        "valid_pixels": 100983314
+      },
+      "macro": {
+        "iou": 0.2688999747246893,
+        "precision": 0.40715228816733645,
+        "recall": 0.42532734540219636,
+        "f1": 0.3601409553007011,
+        "accuracy": 0.9247243995039445
+      }
+    },
+    "VV or VH (union)": {
+      "micro": {
+        "iou": 0.48674970826580655,
+        "precision": 0.6227755586786627,
+        "recall": 0.6902601954770422,
+        "f1": 0.6547836607058324,
+        "accuracy": 0.9228389850624232,
+        "water_prevalence": 0.1060136033959036,
+        "tp": 7389653,
+        "fp": 4476023,
+        "fn": 3315952,
+        "tn": 85801686,
+        "valid_pixels": 100983314
+      },
+      "macro": {
+        "iou": 0.2774480610200673,
+        "precision": 0.39369783665290886,
+        "recall": 0.4693631574691099,
+        "f1": 0.36668701240906326,
+        "accuracy": 0.9205831433846398
+      }
+    },
+    "VV and VH (intersection)": {
+      "micro": {
+        "iou": 0.43903113006337446,
+        "precision": 0.8590259455134212,
+        "recall": 0.473118894261464,
+        "f1": 0.6101760009097783,
+        "accuracy": 0.9359122042677268,
+        "water_prevalence": 0.1060136033959036,
+        "tp": 5065024,
+        "fp": 831217,
+        "fn": 5640581,
+        "tn": 89446492,
+        "valid_pixels": 100983314
+      },
+      "macro": {
+        "iou": 0.24110749165078343,
+        "precision": 0.554016508929412,
+        "recall": 0.2944623179177837,
+        "f1": 0.32362333659958475,
+        "accuracy": 0.9338905734642843
+      }
+    },
+    "mean(VV,VH)": {
+      "micro": {
+        "iou": 0.488779965452572,
+        "precision": 0.7676694971930162,
+        "recall": 0.5736357730366476,
+        "f1": 0.6566181394091888,
+        "accuracy": 0.9363948483607896,
+        "water_prevalence": 0.1060136033959036,
+        "tp": 6141118,
+        "fp": 1858572,
+        "fn": 4564487,
+        "tn": 88419137,
+        "valid_pixels": 100983314
+      },
+      "macro": {
+        "iou": 0.27232031792259326,
+        "precision": 0.4995423232590985,
+        "recall": 0.3774197189676927,
+        "f1": 0.3606277866663733,
+        "accuracy": 0.9343298890732094
+      }
+    },
+    "water or double bounce (14 dB)": {
+      "micro": {
+        "iou": 0.4564443694529941,
+        "precision": 0.6639661907972196,
+        "recall": 0.5935610364850935,
+        "f1": 0.6267927275855016,
+        "accuracy": 0.925065273655012,
+        "water_prevalence": 0.1060136033959036,
+        "tp": 6354430,
+        "fp": 3215982,
+        "fn": 4351175,
+        "tn": 87061727,
+        "valid_pixels": 100983314
+      },
+      "macro": {
+        "iou": 0.23913017252355145,
+        "precision": 0.3650019670411929,
+        "recall": 0.38392025925587825,
+        "f1": 0.3248617954352052,
+        "accuracy": 0.922850319085132
+      }
+    }
+  },
+  "missing_recall_diagnostic": {
+    "chips": 440,
+    "threshold_db": -17.0,
+    "by_outcome": {
+      "true_positive": {
+        "pixels": 5472060,
+        "vv_median_db": -21.25,
+        "vv_p90_db": -18.25,
+        "vv_vh_gap_median_db": 7.25
+      },
+      "false_negative": {
+        "pixels": 5171644,
+        "vv_median_db": -12.25,
+        "vv_p90_db": -7.75,
+        "vv_vh_gap_median_db": 9.25
+      },
+      "false_positive": {
+        "pixels": 1694310,
+        "vv_median_db": -18.25,
+        "vv_p90_db": -17.25,
+        "vv_vh_gap_median_db": 4.25
+      }
+    },
+    "missed_water": {
+      "total_pixels": 5171644,
+      "bins": {
+        "marginal": 1488470,
+        "moderate": 2217137,
+        "bright": 1466037
+      },
+      "shares": {
+        "marginal": 0.2878,
+        "moderate": 0.4287,
+        "bright": 0.2835
+      },
+      "bright_and_double_bounce_pixels": 398132,
+      "bright_and_double_bounce_share": 0.077
+    },
+    "definitions": {
+      "marginal": "vv < -14.0 dB - a threshold move would catch these",
+      "moderate": "-14.0 dB <= vv < -10.0 dB",
+      "bright": "vv >= -10.0 dB - too bright to be open water",
+      "double_bounce": "vv - vh > 14.0 dB - return kept its polarisation"
+    }
+  },
+  "interpretation": [
+    "28.8% of missed water sits between -17 and -14 dB, within 3 dB of the threshold - calibration, recoverable by moving the threshold at a known precision cost.",
+    "28.3% is brighter than -10 dB, which no darkness threshold can recover in any polarisation.",
+    "7.7% is both bright AND strongly co-polarised, the signature of double bounce - consistent with flooded vegetation.",
+    "A real but minority contribution. A fusion rule might recover some of it; check whether the precision cost is acceptable before changing what ships.",
+    "Caveat that applies whatever the number: Sen1Floods11 labels were drawn from Sentinel-2 indices and hand corrected using optical, DEM and land cover. If the labellers could not see water under a canopy, flooded vegetation is absent from the labels, and detecting it would score as a false positive rather than as recovered recall."
+  ],
+  "label_caveat": "Sen1Floods11 labels were drawn from Sentinel-2 NDVI/MNDWI and hand corrected using optical imagery, DEM, land cover and slope. Water under a canopy is not visible in any of those, so flooded vegetation may be absent from the ground truth. Detecting it would then score as a false positive rather than as recovered recall."
+}
