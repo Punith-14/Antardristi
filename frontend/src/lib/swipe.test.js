@@ -8,6 +8,7 @@ import { describe, it } from 'node:test'
 import {
   clampPercent,
   clipInset,
+  clipPolygon,
   COARSE_STEP,
   MAX_PERCENT,
   MIN_PERCENT,
@@ -178,4 +179,16 @@ describe('periodLabel', () => {
     assert.equal(periodLabel({}), '')
     assert.equal(periodLabel({ start: 'not-a-date' }), 'not-a-date')
   })
+})
+
+describe('clipPolygon', () => {
+  it('clips in map pixels, not as a share of a zero-sized layer box', () => {
+  // Leaflet layer containers are 0 x 0; an inset() percentage of that hid the
+  // whole "after" layer (found live: both sides showed the same water).
+  const nw = { x: -200, y: 100 }
+  const se = { x: 800, y: 700 }
+  assert.equal(clipPolygon(50, nw, se), 'polygon(300px 100px, 800px 100px, 800px 700px, 300px 700px)')
+  assert.equal(clipPolygon(0, nw, se), 'polygon(-200px 100px, 800px 100px, 800px 700px, -200px 700px)')
+  assert.equal(clipPolygon(150, nw, se), 'polygon(800px 100px, 800px 100px, 800px 700px, 800px 700px)')
+})
 })

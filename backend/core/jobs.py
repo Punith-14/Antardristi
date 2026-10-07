@@ -102,6 +102,9 @@ def _row(doc, include_result=True):
         "created_at": doc.get("created_at"), "started_at": doc.get("started_at"),
         "finished_at": doc.get("finished_at"), "saved": bool(doc.get("saved")),
         "title": doc.get("title"), "note": doc.get("note"), "expire_at": doc.get("expire_at"),
+        # What was asked: the web app refills its form from this when a past
+        # result is opened, instead of leaving the defaults in place.
+        "request": doc.get("request") or {},
     }
     if include_result and doc.get("_blob") is not None:
         job["result"] = store.unpack(doc["_blob"])

@@ -17,7 +17,7 @@ import {
 } from '../lib/polygon'
 import { ACCEPTED, describeBoundary, pickerItems, toLatLngs } from '../lib/boundary'
 import {
-  clipInset,
+  clipPolygon,
   percentFromPointer,
   periodLabel,
   stepFromKey,
@@ -89,6 +89,7 @@ export default function MapView({
   captureMode = null,       // null | 'circle' | 'box': draw a picture for the report
   onCapture,
   onCancelCapture,
+  focusRegion = null,       // a region to frame when there is no result (a monthly series)
 }) {
   const fileRef = useRef(null)
   const containerRef = useRef(null)
@@ -111,6 +112,11 @@ export default function MapView({
   const [ring, setRing] = useState([])
 
   const [swipe, setSwipe] = useState(50)
+  const zoneRendererRef = useRef(null)
+  // Tiles Earth Engine did not send (busy, or the project in its slower
+  // restricted mode): said on the map instead of leaving it silently empty.
+  const [troubleFor, setTroubleFor] = useState(null)
+  const tileTrouble = troubleFor !== null && troubleFor === result
   const [basemap, setBasemap] = useState('street')
   const [layersOpen, setLayersOpen] = useState(false)
   // Which result layers are shown. A layer the result lacks is simply absent.
@@ -130,6 +136,13 @@ export default function MapView({
       zoom: 5,
       zoomControl: true,
     })
+
+    // Zone outlines and pins in their own panes, so the before/after swipe can
+    // clip them to the "after" side along with the after-water layer - the
+    // zones describe the later period only.
+    map.createPane('resultZones').style.zIndex = 450
+    map.createPane('resultMarkers').style.zIndex = 620
+    zoneRendererRef.current = window.L.svg({ pane: 'resultZones' })
 
     mapRef.current = map
     return () => {
@@ -169,8 +182,14 @@ export default function MapView({
       if (layer) map.removeLayer(layer)
     })
     layersRef.current = { overlay: null, baseline: null, terrain: null, zones: null, markers: null }
-
     if (!result) return
+    // Keyed to this result, so a new result starts without the notice; and
+    // cleared again once a later load (after a zoom or pan) has no failures.
+    const failing = new Set()
+    const watch = (name, layer) => layer
+      .on('loading', () => failing.delete(name))
+      .on('tileerror', () => { failing.add(name); setTroubleFor(result) })
+      .on('load', () => { if (!failing.size) setTroubleFor((t) => (t === result ? null : t)) })
 
     const hints = result.map || {}
     const { before: baselineUrl, after: tileUrl } = swipeLayers(result.artifacts)
@@ -187,17 +206,17 @@ export default function MapView({
     // Baseline first so it sits underneath: Leaflet stacks tile layers in the
     // order they are added, and the clipped layer has to be the top one.
     if (baselineUrl && tileUrl) {
-      layersRef.current.baseline = window.L.tileLayer(baselineUrl, {
+      layersRef.current.baseline = watch('baseline', window.L.tileLayer(baselineUrl, {
         opacity,
         attribution: 'Google Earth Engine',
-      }).addTo(map)
+      })).addTo(map)
     }
 
     if (tileUrl) {
-      layersRef.current.overlay = window.L.tileLayer(tileUrl, {
+      layersRef.current.overlay = watch('overlay', window.L.tileLayer(tileUrl, {
         opacity,
         attribution: 'Google Earth Engine',
-      }).addTo(map)
+      })).addTo(map)
     }
 
     // Dark ground the terrain check did not count, in its own colour: a real
@@ -220,6 +239,8 @@ export default function MapView({
 
       if (outlines.features.length) {
         layersRef.current.zones = window.L.geoJSON(outlines, {
+          pane: 'resultZones',
+          renderer: zoneRendererRef.current || undefined,
           style: (feature) => ({
             color: SEVERITY_COLOURS[feature.properties.severity] || '#3182bd',
             weight: 2,
@@ -243,6 +264,7 @@ export default function MapView({
             const [lon, lat] = feature.geometry.coordinates
             const p = feature.properties
             return window.L.marker([lat, lon], {
+              pane: 'resultMarkers',
               icon: window.L.divIcon({
                 className: 'zone-pin',
                 html: `<span style="background:${p.colour}">${p.rank}</span>`,
@@ -272,6 +294,16 @@ export default function MapView({
     }
   }, [result, onSelectZone])
 
+  // Frame a monthly series' region: it has no result layers of its own, and
+  // the map otherwise stayed on all of India.
+  const focusKey = focusRegion?.bbox ? focusRegion.bbox.join(',') : ''
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || result || !focusKey) return
+    const [w, s, e, n] = focusKey.split(',').map(Number)
+    map.fitBounds([[s, w], [n, e]], { padding: [20, 20] })
+  }, [focusKey, result])
+
   // Show or hide each result layer as ticked in the Layers panel.
   useEffect(() => {
     const map = mapRef.current
@@ -289,9 +321,28 @@ export default function MapView({
   // Applied to the layer's own container rather than by redrawing tiles, so
   // dragging costs one style write per frame and Leaflet never refetches.
   useEffect(() => {
-    const element = layersRef.current.overlay?.getContainer()
-    if (!element) return
-    element.style.clipPath = swipeEnabled ? clipInset(swipe) : ''
+    const map = mapRef.current
+    if (!map) return undefined
+    const targets = () => [
+      layersRef.current.overlay?.getContainer(),
+      map.getPane('resultZones'),
+      map.getPane('resultMarkers'),
+    ].filter(Boolean)
+    const apply = () => {
+      if (!swipeEnabled) {
+        targets().forEach((el) => { el.style.clipPath = '' })
+        return
+      }
+      const size = map.getSize()
+      const nw = map.containerPointToLayerPoint([0, 0])
+      const se = map.containerPointToLayerPoint([size.x, size.y])
+      const clip = clipPolygon(swipe, nw, se)
+      targets().forEach((el) => { el.style.clipPath = clip })
+    }
+    apply()
+    // Layer space shifts as the map pans and zooms, so the clip follows it.
+    map.on('move zoom zoomend resize viewreset', apply)
+    return () => map.off('move zoom zoomend resize viewreset', apply)
   }, [swipe, swipeEnabled, result])
 
   // Fly to a zone selected in the table.
@@ -828,6 +879,12 @@ export default function MapView({
         </div>
       )}
 
+      {tileTrouble && (
+        <div className="map-notice" role="status">
+          Earth Engine did not send some map layers (it may be busy). The numbers on the right are
+          unaffected; zoom or move the map to ask again.
+        </div>
+      )}
       {swipeEnabled && (
         <div className="swipe">
           <span className="swipe-tag swipe-tag-before">

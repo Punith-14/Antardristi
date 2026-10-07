@@ -103,7 +103,35 @@ def resolve_geometry(slug_or_name, level="level1"):
             f"boundary under its earlier name {entry['name']!r}."
         )
 
-    return collection.geometry(), meta
+    geometry = collection.geometry()
+    bbox = region_bbox(geometry, (boundary_set, entry["dataset"], entry["name"], entry["state"]))
+    if bbox:
+        meta["bbox"] = bbox
+    return geometry, meta
+
+
+# Bounding boxes of named regions, asked once per process.
+_BBOX = {}
+
+
+def region_bbox(geometry, key):
+    """[west, south, east, north] of a region, or None.
+
+    So the map can frame a result. Flood results were framed by their zones;
+    surface analyses and monthly series have none, and the map stayed on all
+    of India (found live: vegetation health in Ludhiana). One small Earth
+    Engine call per place, remembered after that.
+    """
+    if key in _BBOX:
+        return _BBOX[key]
+    try:
+        ring = geometry.bounds(maxError=1000).coordinates().get(0).getInfo()
+        lons, lats = [p[0] for p in ring], [p[1] for p in ring]
+        box = [round(min(lons), 4), round(min(lats), 4), round(max(lons), 4), round(max(lats), 4)]
+    except Exception:                            # noqa: BLE001 - framing is a nicety
+        return None
+    _BBOX[key] = box
+    return box
 
 
 def summary_min(zone_result):

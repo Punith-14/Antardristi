@@ -796,3 +796,12 @@ a { color: var(--teal); }
 .place-list li.on { background: rgba(15, 139, 141, .1); }
 .month-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .month-field input { width: 100%; }
+.map-notice {
+  position: absolute; z-index: 700; left: 50%; bottom: 16px; transform: translateX(-50%);
+  max-width: 70%; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.4;
+  background: #fff8e6; color: #7a4b00; border: 1px solid #f0d199; box-shadow: 0 4px 14px rgba(0,0,0,.12);
+}
+
+/* The unreliable-method warning sat at the top of the map, underneath the
+   Draw buttons, and could not be read. It now sits just below them. */
+.map-warning { top: 58px; left: 62px; right: 12px; z-index: 650; }

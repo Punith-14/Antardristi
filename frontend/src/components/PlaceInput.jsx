@@ -41,7 +41,7 @@ export default function PlaceInput({ value, onChange, disabled }) {
     <div className="place-input">
       <input value={value} disabled={disabled} aria-label="State or district" autoComplete="off"
         role="combobox" aria-expanded={showing} aria-controls="place-list"
-        placeholder="Kerala, Morigaon, Darbhanga…"
+        placeholder="e.g. Assam, Sibsagar or Kerala"
         onChange={(e) => { onChange(e.target.value); setOpen(true); setActive(0) }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 120)}

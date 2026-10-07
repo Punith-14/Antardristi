@@ -440,6 +440,7 @@ def analyse(
         builder.note(config["note"])
 
     change_mask = None
+    baseline_mask = None
     if pre_start and pre_end:
         try:
             pre_image, pre_counts = composite(
@@ -491,6 +492,10 @@ def analyse(
                 derived_from=[e_area, e_base],
             )
             change_mask = gained
+            # The earlier window's own layer, so the map can swipe between
+            # before and after (surface comparisons had no "before" layer, so
+            # the swipe never appeared for them).
+            baseline_mask = pre_mask.And(pre_valid)
         except NoOpticalImagery as exc:
             builder.note(f"Baseline could not be computed: {exc}")
 
@@ -627,6 +632,7 @@ def analyse(
             "index": index_image,
             "region": region,
             "change_mask": change_mask,
+            "baseline_mask": baseline_mask,
             "palette": mapping.PALETTES.get(analysis_type, ["#3182bd"]),
         },
     }
@@ -652,6 +658,12 @@ def tile_urls(payload):
                 mask.selfMask().visualize(palette=palette)
             ).getMapId({})["tile_fetcher"].url_format
         }
+
+        baseline_mask = internal.get("baseline_mask")
+        if baseline_mask is not None:
+            urls["baseline_tiles"] = ee.Image(
+                baseline_mask.selfMask().visualize(palette=palette)
+            ).getMapId({})["tile_fetcher"].url_format
 
         change_mask = internal.get("change_mask")
         if change_mask is not None:

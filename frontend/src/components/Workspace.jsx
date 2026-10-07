@@ -5,6 +5,7 @@ import { navigate, toast } from '../hooks'
 import { describeFootprint } from '../lib/bbox'
 import { boundaryArea, boundaryFileProblem } from '../lib/boundary'
 import { DEFAULT_METHOD, availability, findOption, methodOptions, requestFields } from '../lib/methods'
+import { formFromJob } from '../lib/jobform'
 import { findPreset } from '../lib/presets'
 import { hrefFor } from '../lib/router'
 import { VIEW_ONLY } from '../lib/session'
@@ -15,12 +16,17 @@ import QueryPanel from './QueryPanel'
 import ResultPanel from './ResultPanel'
 import SeriesPanel from './SeriesPanel'
 
+// A new analysis starts EMPTY: the area box shows only a grey example, and
+// the dates are blank until chosen. It used to start filled with Kerala,
+// 15-25 Aug 2018 - real values, not hints - so every new analysis ran Kerala
+// 2018 unless someone noticed and changed them. "Try an example" still
+// fills a worked example in one click.
 const DEFAULT_FORM = {
   analysisType: 'flood_extent',
-  region: 'kerala',
+  region: '',
   when: 'one',
-  postStart: '2018-08-15',
-  postEnd: '2018-08-25',
+  postStart: '',
+  postEnd: '',
   // No baseline unless "Before and after" is chosen: a baseline that was set
   // and out of sight once gave someone a change figure they never asked for.
   preStart: '',
@@ -100,6 +106,12 @@ export default function Workspace({ mode, params, visible, catalogue, catalogueE
 
   const submit = useCallback(async (override) => {
     const query = override || form
+    // The form starts empty; "Use the latest radar image" skips the form's own check.
+    if (!drawnArea && !(query.region || '').trim()) {
+      setStatus('error')
+      setError('Type a state or district, or draw an area on the map.')
+      return
+    }
     let floodChoice
     if (query.analysisType === 'flood_extent') {
       const option = findOption(methodOptions(catalogue), query.floodMethod)
@@ -301,6 +313,9 @@ export default function Workspace({ mode, params, visible, catalogue, catalogueE
         api.job(params.job)
           .then((job) => {
             if (job.status !== 'done' || !job.result) throw new Error('That analysis has no stored result.')
+            // Show what produced this result, not whatever the form held before.
+            setDrawnArea(null)
+            setForm(formFromJob(job, DEFAULT_FORM))
             if (job.kind === 'series') {
               setSeries(job.result)
               setResult(null)
@@ -389,6 +404,7 @@ export default function Workspace({ mode, params, visible, catalogue, catalogueE
           captureMode={captureMode}
           onCapture={capture}
           onCancelCapture={() => setCaptureMode(null)}
+          focusRegion={series && !result ? series.region : null}
         />
       </section>
 

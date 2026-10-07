@@ -48,6 +48,25 @@ export function clipInset(percent) {
 }
 
 /**
+ * clip-path for a Leaflet layer or pane: the part RIGHT of the divider, in
+ * pixels of the map's layer space.
+ *
+ * clipInset() alone did not work on a real map: Leaflet's layer containers
+ * and panes are zero-sized boxes whose tiles overflow them, so a percentage
+ * inset of a 0 x 0 box clipped the whole "after" layer away. Both sides then
+ * showed the "before" water and looked identical (found live, Sibsagar,
+ * May vs July 2026). Coordinates here are layer points - `nw` and `se` are
+ * the map view's corners from map.containerPointToLayerPoint - so the clip
+ * follows the view as it pans and zooms.
+ */
+export function clipPolygon(percent, nw, se) {
+  const x = Math.round(nw.x + (se.x - nw.x) * (clampPercent(percent) / 100))
+  const { y: top } = nw
+  const { x: right, y: bottom } = se
+  return `polygon(${x}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${x}px ${bottom}px)`
+}
+
+/**
  * Next position for an arrow key, or null if the key is not a swipe key.
  *
  * Returning null rather than the unchanged value matters: the caller uses it to

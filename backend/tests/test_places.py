@@ -123,11 +123,16 @@ def test_every_block_carries_its_caveats_attribution_and_scope():
     assert block["fetched_at"] == "2024-10-01T00:00:00Z"
 
 
-def test_one_query_covers_every_zone_box():
+def test_one_query_covers_every_zone_outline():
     query = P.overpass_query(P.zone_outlines(RESULT))
     assert query.count('node["place"') == 2 and query.count('way["highway"') == 2
-    # Widened by the 500 m buffer and a margin for longitude: 9.40 -> 9.39326.
-    assert "(9.39326,76.29326,9.50674,76.40674)" in query and "out tags geom" in query
+    # Each zone's OUTLINE, widened by the 500 m buffer and a margin for
+    # longitude (9.40 -> 9.39326) - not its bounding box.
+    assert 'poly:"' in query and "out tags geom" in query
+    first = query.split('poly:"')[1].split('"')[0].split()
+    lats, lons = [float(v) for v in first[0::2]], [float(v) for v in first[1::2]]
+    assert abs(min(lats) - 9.39326) < 2e-4 and abs(max(lats) - 9.50674) < 2e-4
+    assert abs(min(lons) - 76.29326) < 2e-4 and abs(max(lons) - 76.40674) < 2e-4
 
 
 def test_failure_is_an_error_block_not_an_exception():
@@ -309,3 +314,23 @@ def test_a_self_crossing_zone_outline_does_not_crash_the_lookup():
     road = next(r for r in block["zones"][0]["roads"] if r["ref"] == "NH66")
     assert road["km"] > 0, "the crossing road is still measured, against the repaired outline"
     assert "Kainakary" in [p["name"] for p in block["zones"][0]["places"]]
+
+
+def test_a_long_zone_is_searched_by_its_outline_and_on_its_own():
+    """Found live on Assam, July 2026: a 781 km2 zone along the Brahmaputra had
+    a bounding box of thousands of km2, and every Overpass server timed out."""
+    # A thin diagonal river zone about 110 km long and 2 km wide.
+    river = {"type": "Polygon", "coordinates": [[[93.5, 26.5], [94.5, 27.0], [94.5, 27.02],
+                                                 [93.5, 26.52], [93.5, 26.5]]]}
+    small = square(94.0, 26.6, 94.01, 26.61)
+    assert P.box_km2(river) > P.BIG_BOX_KM2 > P.box_km2(small)
+
+    groups = P.chunks([("Z1", 1, river), ("Z2", 2, small), ("Z3", 3, small)])
+    assert [[z[0] for z in g] for g in groups] == [["Z1"], ["Z2", "Z3"]]
+
+    query = P.overpass_query([("Z1", 1, river)])
+    assert 'poly:"' in query and "(26." not in query.split("poly")[0], "outline, not box"
+    poly = query.split('poly:"')[1].split('"')[0].split()
+    assert len(poly) // 2 <= P.MAX_POINTS
+    lats, lons = [float(v) for v in poly[0::2]], [float(v) for v in poly[1::2]]
+    assert 26.4 < min(lats) and max(lats) < 27.1 and 93.4 < min(lons) and max(lons) < 94.6, "lat lon order"

@@ -46,10 +46,21 @@ export function isStale(acquisition, days = 7) {
   return Number.isFinite(acquisition?.age_days) && acquisition.age_days > days
 }
 
-export function nextPassLine(latest) {
+/**
+ * The next pass, estimated from the gaps between recent ones. Once that date
+ * has gone by (a result opened days later, or a pass that did not happen or is
+ * not in Earth Engine yet), saying "expected around 2 Oct" on 5 Oct reads as a
+ * mistake - so it says the expected pass is overdue instead.
+ */
+export function nextPassLine(latest, today = new Date()) {
   const next = latest?.next_pass
   if (!next?.expected_on) return null
-  return `Next pass expected around ${next.expected_on} (estimate from the last ${next.based_on_passes} passes)`
+  const basis = `estimate from the last ${next.based_on_passes} passes`
+  const todayIso = today.toISOString().slice(0, 10)
+  if (next.expected_on < todayIso) {
+    return `A pass was expected around ${next.expected_on} (${basis}); no newer image is in Earth Engine yet`
+  }
+  return `Next pass expected around ${next.expected_on} (${basis})`
 }
 
 export const DISTRICT_SORTS = [

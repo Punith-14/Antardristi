@@ -62,10 +62,12 @@ test('an old image is flagged', () => {
 })
 
 test('the next pass is labelled an estimate', () => {
-  const line = nextPassLine({ next_pass: { expected_on: '2026-10-10', based_on_passes: 4 } })
+  const line = nextPassLine({ next_pass: { expected_on: '2026-10-10', based_on_passes: 4 } }, new Date('2026-10-05T10:00:00Z'))
   assert.match(line, /2026-10-10/)
   assert.match(line, /estimate/)
   assert.equal(nextPassLine({}), null)
+  const overdue = nextPassLine({ next_pass: { expected_on: '2026-10-02', based_on_passes: 13 } }, new Date('2026-10-05T10:00:00Z'))
+  assert.match(overdue, /was expected around 2026-10-02.*no newer image is in Earth Engine yet/)
 })
 
 // -------------------------------------------------------------- districts

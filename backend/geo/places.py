@@ -118,15 +118,61 @@ def _bbox(geometry, margin_deg):
             max(lats) + margin_deg, max(lons) + margin_deg)
 
 
+# A zone whose box is bigger than this is asked about on its own.
+BIG_BOX_KM2 = 400
+# The search shape sent to Overpass: the zone outline grown by the buffer and
+# simplified to at most this many points per part, at most MAX_PARTS parts.
+MAX_POINTS = 60
+MAX_PARTS = 6
+
+
+def box_km2(geometry):
+    s, w, n, e = _bbox(geometry, 0)
+    return (n - s) * KM_PER_DEG * (e - w) * KM_PER_DEG * math.cos(math.radians((n + s) / 2))
+
+
+def search_shapes(geometry, margin_deg):
+    """Overpass `poly:` filters for a zone: its outline plus the buffer.
+
+    Asking for a zone's bounding BOX was what failed live on Assam, July 2026:
+    zones along the Brahmaputra are long and thin, so a 781 km2 zone had a box
+    of about 8,000 km2, and every public server timed out or answered 504.
+    The outline asks for a tenth of that. None when the outline cannot be used
+    (the caller then falls back to the box).
+    """
+    try:
+        from shapely.geometry import shape
+        from shapely.validation import make_valid
+        grown = make_valid(shape(geometry)).buffer(margin_deg)
+        parts = list(getattr(grown, "geoms", [grown]))
+        parts = sorted((p for p in parts if p.geom_type == "Polygon"), key=lambda p: -p.area)[:MAX_PARTS]
+        out = []
+        for part in parts:
+            tolerance = margin_deg / 4
+            ring = part.exterior.simplify(tolerance)
+            while len(ring.coords) > MAX_POINTS:
+                tolerance *= 2
+                ring = part.exterior.simplify(tolerance)
+            out.append(" ".join(f"{lat:.5f} {lon:.5f}" for lon, lat in list(ring.coords)[:-1]))
+        return out or None
+    except Exception:                            # noqa: BLE001 - the box still works
+        return None
+
+
 def overpass_query(zones, buffer_m=BUFFER_M):
-    """One Overpass QL query covering every zone's box, widened by the buffer."""
+    """One Overpass QL query covering every zone's outline, widened by the buffer."""
     margin = buffer_m / 1000 / KM_PER_DEG * 1.5     # a little extra for longitude
     statements = []
     for _, _, geometry in zones:
-        s, w, n, e = (round(v, 5) for v in _bbox(geometry, margin))
-        box = f"({s},{w},{n},{e})"
-        statements.append(f'node["place"~"^({"|".join(PLACE_TYPES)})$"]{box};')
-        statements.append(f'way["highway"~"^({"|".join(ROAD_CLASSES)})$"]{box};')
+        polys = search_shapes(geometry, margin)
+        if polys:
+            filters = [f'(poly:"{p}")' for p in polys]
+        else:
+            s, w, n, e = (round(v, 5) for v in _bbox(geometry, margin))
+            filters = [f"({s},{w},{n},{e})"]
+        for area in filters:
+            statements.append(f'node["place"~"^({"|".join(PLACE_TYPES)})$"]{area};')
+            statements.append(f'way["highway"~"^({"|".join(ROAD_CLASSES)})$"]{area};')
     return f"[out:json][timeout:{TIMEOUT_S - 10}];(" + "".join(statements) + ");out tags geom;"
 
 
@@ -177,7 +223,23 @@ def clock():
 
 
 def chunks(zones, size=ZONES_PER_QUERY):
-    return [zones[i:i + size] for i in range(0, len(zones), size)]
+    """Zones in rank order, a few per query - a very large zone on its own,
+    so one heavy zone cannot sink the small ones queried with it."""
+    out, group = [], []
+    for zone in zones:
+        if box_km2(zone[2]) > BIG_BOX_KM2:
+            if group:
+                out.append(group)
+                group = []
+            out.append([zone])
+            continue
+        group.append(zone)
+        if len(group) == size:
+            out.append(group)
+            group = []
+    if group:
+        out.append(group)
+    return out
 
 
 def fetch_zones(zones, fetcher=None):

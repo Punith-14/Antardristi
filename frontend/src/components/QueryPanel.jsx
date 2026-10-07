@@ -108,6 +108,10 @@ export default function QueryPanel({
 
   const submit = (event) => {
     event.preventDefault()
+    if (!drawnArea && !(form.region || '').trim()) {
+      setLocalError('Type a state or district, or draw an area on the map.')
+      return
+    }
     const problem = dateProblem(form, mode)
     if (problem) {
       setLocalError(problem)
