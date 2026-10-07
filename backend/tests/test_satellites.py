@@ -33,6 +33,13 @@ def isolated(tmp_path, monkeypatch):
     celestrak._last_failure.update(at=None, reason=None)
     service._shapes.clear()
     service._india_failed["at"] = None
+
+    # Never the real Earth Engine. On a machine with working credentials the
+    # India outline was really requested, and with the project in Earth
+    # Engine's slower restricted mode one test waited 18 minutes for it.
+    def offline():
+        raise RuntimeError("Earth Engine is not used in tests")
+    monkeypatch.setattr(service, "_india_from_earth_engine", offline)
     yield
 
 

@@ -38,3 +38,5 @@ pymongo[srv]
 pytest
 requests
 mongomock
+# Tests read generated PDFs back to check their contents.
+pypdf
