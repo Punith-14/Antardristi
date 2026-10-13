@@ -506,3 +506,42 @@ def get_region_geometry(region_config):
         )
 
     return None
+
+
+# District and state under a point, asked once per rounded coordinate.
+_PLACE_AT = {}
+
+
+def place_at(lon, lat, key=None):
+    """{"district", "state"} of the boundary containing a point, or None.
+
+    Used only to give a drawn shape a readable name ("Circle near Dibrugarh,
+    Assam"). It never changes what is measured: the drawn shape itself is
+    still the area, and its metadata still says it is not an official
+    boundary.
+    """
+    try:
+        lon, lat = float(lon), float(lat)
+    except (TypeError, ValueError):
+        return None
+    cache_key = (round(lon, 3), round(lat, 3), key or boundaries.active_key())
+    if cache_key in _PLACE_AT:
+        return _PLACE_AT[cache_key]
+    _initialize_earth_engine()
+    district_field = boundaries.name_field("district", key)
+    state_field = boundaries.name_field("state", key)
+    features = (
+        boundaries.india(boundaries.dataset("district", key), key)
+        .filterBounds(ee.Geometry.Point([lon, lat]))
+        .limit(1)
+        .getInfo()
+        .get("features", [])
+    )
+    place = None
+    if features:
+        props = features[0].get("properties", {})
+        district, state = props.get(district_field), props.get(state_field)
+        if district or state:
+            place = {"district": district, "state": state}
+    _PLACE_AT[cache_key] = place
+    return place

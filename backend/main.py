@@ -334,6 +334,23 @@ def list_regions():
     return {"regions": [{"slug": slug, **config} for slug, config in REGIONS.items()]}
 
 
+@app.get("/regions/at")
+def region_at(lat: float, lng: float):
+    """The district and state under a point - to name a shape drawn on the map."""
+    try:
+        place = regions.place_at(lng, lat)
+    except Exception as exc:                     # noqa: BLE001 - naming is optional
+        raise HTTPException(status_code=503, detail={
+            "error": "place_unavailable",
+            "message": f"The place could not be looked up ({type(exc).__name__}).",
+        }) from exc
+    if not place:
+        raise HTTPException(status_code=404, detail={
+            "error": "outside_india", "message": "No Indian district at this point.",
+        })
+    return {**place, "name": footprint.place_label(place)}
+
+
 @app.get("/regions/names")
 def region_names():
     """Every state and district name, for the Area box's suggestions.

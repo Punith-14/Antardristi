@@ -7,6 +7,7 @@ import { effectiveOption, terrainAvailable } from '../lib/terrain'
 import { dateProblem, firstDay, lastDay, monthOf, wholeMonths } from '../lib/months'
 import PlaceInput from './PlaceInput'
 import Term from './Term'
+import { areaTitle } from '../lib/areaname'
 
 const DESCRIPTIONS = {
   flood_extent: 'Where flood water is, how many people live there, and which villages and roads it reaches.',
@@ -55,6 +56,7 @@ export default function QueryPanel({
   status,
   error,
   drawnArea,
+  areaPlace = null,
   onClearArea,
   disabled = false,
 }) {
@@ -161,7 +163,11 @@ export default function QueryPanel({
       <Step n={2} title="Area">
         {drawnArea ? (
           <div className="area-chip">
-            <span>Using the area you {drawnArea.kind === 'boundary' ? 'uploaded' : 'drew'} on the map</span>
+            <span>
+              {drawnArea.kind === 'boundary'
+                ? 'Using the area you uploaded on the map'
+                : <><strong>{areaTitle(drawnArea, areaPlace)}</strong> (drawn on the map)</>}
+            </span>
             <button type="button" onClick={onClearArea}>Use a place name</button>
           </div>
         ) : (

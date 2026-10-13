@@ -29,7 +29,20 @@ from core.evidence import EvidenceBuilder, Observation, build_provenance, covera
 PIPELINE_VERSION = "0.5.0"
 
 GSW = "JRC/GSW1_4/GlobalSurfaceWater"
+
+# Below this much detected flooding, finding no zone is expected (scattered
+# pixels), not a fault in zone extraction.
+SCATTERED_FLOOD_KM2 = 25.0
 PERMANENT_WATER_OCCURRENCE = 90
+
+# "Usually water": wet in at least a quarter of all observations since 1984 but
+# below the permanent threshold - shifting river channels, sandbars, seasonal
+# wetlands. Detected water there is reported as a SHARE and a warning, never
+# subtracted: real floods also cover such ground, and removing it would change
+# every measured number. A big braided river like the Brahmaputra can
+# otherwise read as hundreds of km2 of "flood" in a normal season.
+USUAL_WATER_OCCURRENCE = 25
+RIVERBED_WARNING_SHARE = 0.5
 
 # Above this mean cloud fraction, optical is not worth attempting.
 OPTICAL_CLOUD_CEILING = 0.4
@@ -136,6 +149,37 @@ def region_bbox(geometry, key):
 
 def summary_min(zone_result):
     return zone_result.get("min_area_km2", zone_extraction.MIN_ZONE_AREA_KM2)
+
+
+def usual_water_mask(region):
+    """Water often but not always (occurrence 25-90%): the river's usual bed."""
+    occurrence = ee.Image(GSW).select("occurrence").unmask(0)
+    return (
+        occurrence.gte(USUAL_WATER_OCCURRENCE)
+        .And(occurrence.lt(PERMANENT_WATER_OCCURRENCE))
+        .clip(region)
+        .rename("usual_water")
+    )
+
+
+def riverbed_check(flood_area_km2, riverbed_km2):
+    """The share of detected water lying in the river's usual bed, and the
+    warning to give when it is most of it. Pure arithmetic, so it is tested."""
+    if not flood_area_km2 or riverbed_km2 is None:
+        return None, None
+    share = max(0.0, min(1.0, riverbed_km2 / flood_area_km2))
+    info = {"km2": round(riverbed_km2, 1), "share": round(share, 3),
+            "occurrence_range": [USUAL_WATER_OCCURRENCE, PERMANENT_WATER_OCCURRENCE]}
+    warning = None
+    if share >= RIVERBED_WARNING_SHARE:
+        warning = (
+            f"About {share:.0%} of the detected water ({riverbed_km2:.1f} km2) lies where "
+            f"there is usually water ({USUAL_WATER_OCCURRENCE} to {PERMANENT_WATER_OCCURRENCE}% of "
+            "observations since 1984): river channels and sandbars that shift between seasons. "
+            "Much of it may be the river at its normal size rather than new flooding. "
+            "Use Before and after with a dry-season month to see only new water."
+        )
+    return info, warning
 
 
 def permanent_water_mask(region):
@@ -734,6 +778,18 @@ def analyse_flood(
         source=GSW,
     )
 
+    # How much of the "flood" is the river's usual bed (single-period mode;
+    # a before/after comparison already cancels the normal river out).
+    usual_water = None
+    if flood_area > 0 and not pre_start:
+        try:
+            riverbed = area_km2(flood_mask.And(usual_water_mask(region)), region, scale)
+            usual_water, riverbed_warning = riverbed_check(flood_area, riverbed)
+            if riverbed_warning:
+                builder.note(riverbed_warning)
+        except Exception:                        # noqa: BLE001 - a warning, never a blocker
+            usual_water = None
+
     # What the terrain check removed, as its own record - so a reader sees
     # "312 km2 of dark ground was not counted, and why", and a real flash
     # flood in the hills that the rule removed is still visible somewhere.
@@ -778,14 +834,24 @@ def analyse_flood(
 
     flood_zones = zone_result.get("zones") or []
 
-    # 486 km2 of flooding that resolves into zero zones is a bug, not a finding.
-    # Say so rather than quietly omitting the zone evidence.
-    if flood_area > 0 and not flood_zones:
-        builder.note(
-            f"Zone extraction returned no regions despite {flood_area:.1f} km2 "
-            "of detected flooding. Location detail is unavailable for this "
-            "result; the extent figure is unaffected."
-        )
+    # A little scattered flooding (a few km2 of single pixels) honestly has no
+    # zone: no connected patch reaches the minimum size. 486 km2 that resolves
+    # into zero zones is a bug, not a finding. Say which one it is rather than
+    # quietly omitting the zone evidence.
+    if flood_area > 0 and not flood_zones and not zone_result.get("skipped"):
+        min_zone = zone_result.get("min_area_km2", zone_extraction.MIN_ZONE_AREA_KM2)
+        if flood_area < SCATTERED_FLOOD_KM2:
+            builder.note(
+                f"No flood zones: the {flood_area:.1f} km2 of detected water is scattered, "
+                f"and no connected patch reaches {min_zone} km2, the smallest zone shown. "
+                "Villages and roads are listed only for zones."
+            )
+        else:
+            builder.note(
+                f"Zone extraction returned no regions despite {flood_area:.1f} km2 "
+                "of detected flooding. Location detail is unavailable for this "
+                "result; the extent figure is unaffected."
+            )
 
     if flood_zones:
         summary = zone_extraction.summarise(zone_result)
@@ -971,6 +1037,9 @@ def analyse_flood(
             for zone in flood_zones
         ],
         "zones_summary": zone_extraction.summarise(zone_result) if flood_zones else None,
+        # Share of the detected water in the river's usual bed (25-90% water
+        # since 1984), with the warning when it is most of it. Not subtracted.
+        "usual_water": usual_water,
         # The range, its sources and its caveat - or the reason it is missing,
         # so an absent figure reads as "could not be computed", not "nobody".
         "population": (

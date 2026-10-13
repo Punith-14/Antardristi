@@ -67,6 +67,9 @@ def test_the_sar_path_is_unchanged_by_the_refactor(monkeypatch, baseline):
     assert now.pop("scenes") is None
     # Nor any terrain block while no measured terrain rule exists (Group C).
     assert now.pop("terrain") is None
+    # Added with the riverbed warning: the stand-in has no JRC occurrence band,
+    # so the share is not measured and nothing else may move.
+    assert now.pop("usual_water") is None
 
     # The warnings list is documentation that grows as measurements come in
     # (notebook 08 added the dry-ground precision figures). It is checked

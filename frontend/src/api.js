@@ -117,6 +117,9 @@ export const api = {
   regions: () => request('/regions'),
   regionNames: () => request('/regions/names'),
 
+  /** District and state under a point, to name a drawn shape. */
+  placeAt: (lat, lng) => request(`/regions/at?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`),
+
   /** Flood extent, Sentinel-1. */
   flood: (payload) =>
     request('/analyze', { method: 'POST', body: JSON.stringify(payload) }),

@@ -18,6 +18,7 @@ import { SORTS, nextSort, sortZones } from '../lib/zonesort'
 import {
   DISTRICT_SORTS,
   freshnessLine,
+  riverbedLine,
   isStale,
   nextPassLine,
   peopleCell,
@@ -761,6 +762,9 @@ export default function ResultPanel({ result, selectedZone, onSelectZone, highli
           <>
             <Understood result={result} />
             <Freshness acquisition={result.acquisition} latest={result.latest} onExtend={onExtend} />
+            {riverbedLine(result.usual_water) && (
+              <p className="riverbed-warning" role="note">{riverbedLine(result.usual_water)}</p>
+            )}
             {noData ? (
               <section className="no-data">
                 <h3>Nothing could be observed</h3>

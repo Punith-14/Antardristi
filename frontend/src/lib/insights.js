@@ -97,3 +97,15 @@ export function sumCheckLine(check) {
     `${check.region_total_km2} km² (${check.difference_km2 > 0 ? '+' : ''}${check.difference_km2} km²): ` +
     'the 2015 state and district boundaries do not align exactly.'
 }
+
+/**
+ * The riverbed warning: most of the detected "flood" lies where there is
+ * usually water (shifting channels, sandbars). Null when it is not most of it.
+ */
+export function riverbedLine(usualWater, threshold = 0.5) {
+  if (!usualWater || !Number.isFinite(usualWater.share) || usualWater.share < threshold) return null
+  const pct = Math.round(usualWater.share * 100)
+  const km2 = Number(usualWater.km2).toLocaleString('en-IN', { maximumFractionDigits: 1 })
+  return `About ${pct}% of this water (${km2} km²) is in the river's usual bed - channels and sandbars that are often wet. ` +
+    'Much of it may be the river at its normal size, not new flooding. Use Before and after with a dry month to see only new water.'
+}

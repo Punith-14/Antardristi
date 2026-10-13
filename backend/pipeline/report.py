@@ -13,7 +13,7 @@ the ablation baseline that tells you whether the LLM is earning its place.
 import os
 import re
 
-from core.verification import check_caveats, verify_report
+from core.verification import _parse_numbers, check_caveats, verify_report
 
 PIPELINE_VERSION = "0.4.0"
 
@@ -452,12 +452,12 @@ def collect_extra_values(payload):
     # pipeline computed them. Without this, a report that faithfully repeats a
     # caveat like "Otsu returned -10.99 dB" is penalised for doing the right
     # thing.
+    # Parsed with the verifier's own number reader, so a range like "25-90%"
+    # yields 90 here exactly as it does in the report - a looser pattern read
+    # it as -90 and failed a report that quoted the caveat word for word.
     for index, note in enumerate(unobserved.get("notes") or []):
-        for match in re.finditer(r"-?\d+\.?\d*", note):
-            try:
-                extra[f"note{index}_{match.start()}"] = float(match.group(0))
-            except ValueError:
-                continue
+        for _raw, value, position in _parse_numbers(note):
+            extra[f"note{index}_{position}"] = value
 
     return {k: v for k, v in extra.items() if v is not None}
 

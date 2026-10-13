@@ -102,3 +102,12 @@ test('the sum check says plainly when districts do not add up', () => {
   assert.match(off, /-36 km²/)
   assert.match(off, /do not align exactly/)
 })
+
+test('riverbed warning only when most of the water is in the usual bed', async () => {
+  const { riverbedLine } = await import('./insights.js')
+  assert.equal(riverbedLine(null), null)
+  assert.equal(riverbedLine({ km2: 100, share: 0.3 }), null)
+  const line = riverbedLine({ km2: 812.4, share: 0.83 })
+  assert.match(line, /^About 83% of this water \(812\.4 km²\)/)
+  assert.match(line, /Before and after/)
+})

@@ -432,3 +432,36 @@ def test_the_understood_line_names_the_drawn_area():
     text = routing.describe(decision)
     assert "the area you drew" in text
     assert "no region identified" not in text
+
+
+# --- naming a drawn shape after the place it sits in -------------------------
+
+def test_drawn_shape_named_after_the_district_at_its_centre():
+    shape = footprint.from_point([94.9, 27.4], 10)
+    meta = footprint.metadata(shape, place={"district": "Dibrugarh", "state": "Assam"})
+    assert meta["name"] == "Circle near Dibrugarh, Assam"
+    assert meta["admin_level"] == "custom" and meta["state"] is None   # still not an official boundary
+    assert "label only" in meta["note"]
+
+
+def test_without_a_place_the_old_label_stays():
+    shape = footprint.from_bbox([94.8, 27.3, 95.0, 27.5])
+    assert footprint.metadata(shape)["name"] == "user-defined rectangle"
+    assert footprint.centre(shape) == (94.9, 27.4)
+
+
+def test_place_lookup_failure_never_blocks_the_analysis(monkeypatch):
+    from geo import regions
+
+    def boom(*_):
+        raise RuntimeError("no Earth Engine")
+    monkeypatch.setattr(regions, "place_at", boom)
+    shape = footprint.from_bbox([94.8, 27.3, 95.0, 27.5])
+    assert footprint._place_near(shape) is None
+    assert footprint.metadata(shape, place=footprint._place_near(shape))["name"] == "user-defined rectangle"
+
+
+def test_place_label_joins_district_and_state():
+    assert footprint.place_label({"district": "Alappuzha", "state": "Kerala"}) == "Alappuzha, Kerala"
+    assert footprint.place_label({"district": "Delhi", "state": "Delhi"}) == "Delhi"
+    assert footprint.place_label(None) is None

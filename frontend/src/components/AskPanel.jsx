@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 
+import { areaTitle } from '../lib/areaname'
 import {
   EXAMPLE_QUESTIONS,
   askErrorView,
@@ -21,7 +22,7 @@ import {
  * pixels, never an area of ground - the panel says so before anyone uploads,
  * so the number does not arrive as a surprise.
  */
-export default function AskPanel({ onAsk, onUpload, status, askError, uploadFailure, drawnArea, disabled = false, initialQuestion = '' }) {
+export default function AskPanel({ onAsk, onUpload, status, askError, uploadFailure, drawnArea, areaPlace = null, disabled = false, initialQuestion = '' }) {
   const [question, setQuestion] = useState(initialQuestion)
   const [localError, setLocalError] = useState('')
   const [file, setFile] = useState(null)
@@ -88,8 +89,8 @@ export default function AskPanel({ onAsk, onUpload, status, askError, uploadFail
 
         {drawnArea && (
           <small className="ask-area-note">
-            Your drawn area will be used as the place; the question decides what
-            to measure and when.
+            {drawnArea.kind === 'boundary' ? 'Your uploaded area' : `Your drawn area (${areaTitle(drawnArea, areaPlace)})`} will
+            be used as the place; the question decides what to measure and when.
           </small>
         )}
 

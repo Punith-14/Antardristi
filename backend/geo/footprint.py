@@ -318,7 +318,44 @@ def build(bbox=None, point=None, radius_km=None, polygon=None, boundary=None):
     else:
         shape = from_polygon(polygon)
 
-    return geometry(shape), metadata(shape)
+    return geometry(shape), metadata(shape, place=_place_near(shape))
+
+
+SHAPE_WORDS = {"bbox": "Box", "circle": "Circle", "polygon": "Drawn area"}
+
+
+def centre(shape):
+    """(lon, lat) roughly in the middle of a drawn shape."""
+    if shape.get("kind") == "circle":
+        return tuple(shape["centre"])
+    west, south, east, north = shape["bbox"]
+    return ((west + east) / 2, (south + north) / 2)
+
+
+def _place_near(shape):
+    """The district and state at the shape's centre, or None if unknown.
+
+    A name only - looked up so the result reads "Circle near Dibrugarh, Assam"
+    rather than "user-defined circle". Any failure (no Earth Engine, the sea,
+    a test stand-in) leaves the old label; it never blocks the analysis.
+    """
+    if shape.get("kind") not in SHAPE_WORDS:
+        return None
+    try:
+        from geo import regions                  # local: regions imports Earth Engine helpers
+        return regions.place_at(*centre(shape))
+    except Exception:                            # noqa: BLE001 - naming is optional
+        return None
+
+
+def place_label(place):
+    """'Dibrugarh, Assam' from {"district", "state"}."""
+    if not place:
+        return None
+    parts = [p for p in (place.get("district"), place.get("state")) if p]
+    if len(parts) == 2 and parts[0] == parts[1]:
+        parts = parts[:1]
+    return ", ".join(parts) or None
 
 
 def geometry(shape):
@@ -354,7 +391,7 @@ def geometry(shape):
     raise InvalidFootprint(f"unknown footprint kind {kind!r}")
 
 
-def metadata(shape):
+def metadata(shape, place=None):
     """Region metadata for a user-defined area.
 
     Deliberately shaped like the GAUL metadata so the rest of the pipeline does
@@ -372,9 +409,12 @@ def metadata(shape):
         "polygon": "user-defined area",
     }[shape["kind"]]
 
+    near = place_label(place)
+    name = f"{SHAPE_WORDS[shape['kind']]} near {near}" if near else label
     return {
         "slug": f"custom-{shape['kind']}",
-        "name": label,
+        "name": name,
+        "near": place,
         "admin_level": "custom",
         "state": None,
         "boundary_source": "user-supplied",
@@ -384,6 +424,8 @@ def metadata(shape):
             f"This is a {label}, not an administrative boundary. Figures cover "
             "exactly the shape supplied, which may cross district or state "
             "lines and may not contain all of any named place."
+            + (f" It is named after the district at its centre ({near}); "
+               "that is a label only." if near else "")
         ),
     }
 

@@ -4,6 +4,7 @@ import { api, runAnalysis, runSeries } from '../api'
 import { navigate, toast } from '../hooks'
 import { describeFootprint } from '../lib/bbox'
 import { boundaryArea, boundaryFileProblem } from '../lib/boundary'
+import { areaCentre } from '../lib/areaname'
 import { DEFAULT_METHOD, availability, findOption, methodOptions, requestFields } from '../lib/methods'
 import { formFromJob } from '../lib/jobform'
 import { findPreset } from '../lib/presets'
@@ -78,6 +79,8 @@ export default function Workspace({ mode, params, visible, catalogue, catalogueE
   const [selectedZone, setSelectedZone] = useState(null)
   const [highlighted, setHighlighted] = useState(null)
   const [drawnArea, setDrawnArea] = useState(null)
+  // 'Dibrugarh, Assam' for a drawn shape, looked up after drawing; null until known.
+  const [areaPlace, setAreaPlace] = useState(null)
   const [series, setSeries] = useState(null)
   const [opening, setOpening] = useState(false)
   const [askError, setAskError] = useState(null)
@@ -91,6 +94,19 @@ export default function Workspace({ mode, params, visible, catalogue, catalogueE
   const handled = useRef(new Set())
 
   useEffect(() => { onBusy?.(status === 'loading') }, [status, onBusy])
+
+  // Name a drawn shape after the district at its centre, so the Area step
+  // says where it is. A label only; the shape is still what gets measured.
+  useEffect(() => {
+    setAreaPlace(null)
+    const centre = areaCentre(drawnArea)
+    if (!centre) return undefined
+    let live = true
+    api.placeAt(centre.lat, centre.lng)
+      .then((p) => { if (live && p?.name) setAreaPlace(p.name) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [drawnArea])
 
   const floodOption = findOption(methodOptions(catalogue), form.floodMethod)
 
@@ -365,6 +381,7 @@ export default function Workspace({ mode, params, visible, catalogue, catalogueE
             askError={askError}
             uploadFailure={uploadFailure}
             drawnArea={drawnArea}
+            areaPlace={areaPlace}
           />
         ) : (
           <QueryPanel
@@ -379,6 +396,7 @@ export default function Workspace({ mode, params, visible, catalogue, catalogueE
             status={status}
             error={error}
             drawnArea={drawnArea}
+            areaPlace={areaPlace}
             onClearArea={() => setDrawnArea(null)}
           />
         )}
