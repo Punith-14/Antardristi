@@ -1715,7 +1715,7 @@ def forgot_password(payload: EmailRequest, request: Request):
             security.event("password reset link (no email on account)", username=user["username"], link=url)
         auth.record_event(user["username"], "reset_requested", True, _address(request))
     return {"sent": True, "message": "If an account uses that email, a reset link is on its way. "
-                                     "It works for 30 minutes."}
+                                     "It works for 30 minutes. Check spam if you do not see it in a minute."}
 
 
 @app.post("/auth/reset")
