@@ -53,11 +53,42 @@ def _shape_file(key):
     return paths.CACHE / "orbits" / "shapes" / f"{key}.json"
 
 
+def _polygonal(geojson):
+    """Only the area-covering parts of a geometry, as a Polygon or MultiPolygon.
+
+    Simplifying an outline with many small pieces (Kerala's islands and
+    backwaters, Mahe) can collapse some of them into lines or points, and
+    Earth Engine then answers with a GeometryCollection. The map and the
+    footprint checks need polygons, so the collapsed bits are dropped.
+    """
+    kind = geojson.get("type")
+    if kind in ("Polygon", "MultiPolygon"):
+        return geojson
+    polygons = []
+
+    def collect(part):
+        if part.get("type") == "Polygon":
+            polygons.append(part["coordinates"])
+        elif part.get("type") == "MultiPolygon":
+            polygons.extend(part["coordinates"])
+        elif part.get("type") == "GeometryCollection":
+            for inner in part.get("geometries", []):
+                collect(inner)
+
+    collect(geojson)
+    if not polygons:
+        raise ValueError(f"The outline has no area after simplifying ({kind}).")
+    if len(polygons) == 1:
+        return {"type": "Polygon", "coordinates": polygons[0]}
+    return {"type": "MultiPolygon", "coordinates": polygons}
+
+
 def _round(geojson, places=3):
     def walk(coords):
         if isinstance(coords, (int, float)):
             return round(coords, places)
         return [walk(c) for c in coords]
+    geojson = _polygonal(geojson)
     return {"type": geojson["type"], "coordinates": walk(geojson["coordinates"])}
 
 

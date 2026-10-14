@@ -345,3 +345,36 @@ def test_the_india_summary_is_public_and_an_area_needs_a_session(client, monkeyp
     monkeypatch.setattr(service, "area", lambda name: {"area": {"name": "Morigaon"}, "next_planned": []})
     assert client.get("/satellites/area?region=morigaon", headers=headers).json()["area"]["name"] == "Morigaon"
     assert client.get("/satellites/area?region=%20", headers=headers).status_code == 422
+
+
+# ------------------------------------------------- outlines that simplify badly
+
+SQUARE = [[[76.0, 9.0], [77.0, 9.0], [77.0, 10.0], [76.0, 10.0], [76.0, 9.0]]]
+ISLAND = [[[72.6, 10.5], [72.7, 10.5], [72.7, 10.6], [72.6, 10.5]]]
+
+
+def test_a_simplified_outline_that_came_back_as_a_collection_keeps_its_polygons():
+    # Kerala at 2 km: Earth Engine answered a GeometryCollection, because tiny
+    # pieces collapsed to lines. That used to raise KeyError: 'coordinates'.
+    collection = {"type": "GeometryCollection", "geometries": [
+        {"type": "Polygon", "coordinates": SQUARE},
+        {"type": "LineString", "coordinates": [[75.5, 11.7], [75.6, 11.7]]},
+        {"type": "MultiPolygon", "coordinates": [ISLAND]},
+        {"type": "Point", "coordinates": [75.53, 11.70]},
+    ]}
+    out = service._round(collection)
+    assert out["type"] == "MultiPolygon"
+    assert len(out["coordinates"]) == 2
+
+
+def test_a_collection_with_one_polygon_becomes_that_polygon():
+    out = service._round({"type": "GeometryCollection", "geometries": [
+        {"type": "LineString", "coordinates": [[75.5, 11.7], [75.6, 11.7]]},
+        {"type": "Polygon", "coordinates": SQUARE}]})
+    assert out == {"type": "Polygon", "coordinates": SQUARE}
+
+
+def test_an_outline_with_no_area_left_is_an_error_not_a_bad_map():
+    with pytest.raises(ValueError):
+        service._round({"type": "GeometryCollection", "geometries": [
+            {"type": "LineString", "coordinates": [[75.5, 11.7], [75.6, 11.7]]}]})

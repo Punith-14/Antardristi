@@ -35,15 +35,23 @@ import tempfile as _tempfile
 
 _os.environ["AUTH_REQUIRED"] = "false"
 _os.environ["DATABASE_PATH"] = str(Path(_tempfile.mkdtemp(prefix="antardrishti-test-")) / "app.db")
-_os.environ.pop("ADMIN_USERNAME", None)
-_os.environ.pop("ADMIN_PASSWORD", None)
+# Blanked rather than removed: main.py calls load_dotenv() again on import,
+# and that refills any key that is MISSING - so a removed MONGODB_URI came
+# back from backend/.env and the tests would talk to the real Atlas database.
+# load_dotenv never overrides a key that is present, even an empty one.
+_os.environ["ADMIN_USERNAME"] = ""
+_os.environ["ADMIN_PASSWORD"] = ""
 _os.environ["ANALYSES_PER_HOUR"] = "100000"
 _os.environ["LOG_FORMAT"] = "text"
 _os.environ["SATELLITE_WARM"] = "false"
 _os.environ["MAINTENANCE_SWEEP"] = "false"
 _os.environ["MAIL_SYNC"] = "1"
-_os.environ.pop("MONGODB_URI", None)
-_os.environ.pop("SMTP_HOST", None)
+_os.environ["MONGODB_URI"] = ""
+_os.environ["SMTP_HOST"] = ""
+# The server's service account is not for tests: the tests that need one set
+# it themselves, and the rest expect the laptop login (or a stand-in).
+_os.environ["EE_SERVICE_ACCOUNT"] = ""
+_os.environ["EE_PRIVATE_KEY_FILE"] = ""
 
 
 @pytest.fixture(autouse=True)
